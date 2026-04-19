@@ -1,0 +1,9 @@
+.git
+.gitignore
+**/__pycache__/
+**/*.py[cod]
+**/*.sqlite3
+**/db.sqlite3
+venv/
+beer11C/venv/
+beer11C/staticfiles/
