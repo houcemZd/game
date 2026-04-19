@@ -1,0 +1,297 @@
+{% extends "game/base.html" %}
+{% load game_extras %}
+{% block title %}Instructor — {{ session.name }}{% endblock %}
+
+{% block extra_head %}
+<style>
+/* ── Layout ───────────────────────────────────────────────────────────────── */
+.inst-header {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: .75rem; margin-bottom: 1.5rem;
+}
+.inst-badge {
+  display: inline-flex; align-items: center; gap: .4rem;
+  background: rgba(245,200,66,.12); border: 1px solid rgba(245,200,66,.3);
+  border-radius: 999px; padding: .25rem .75rem;
+  font-size: .72rem; font-weight: 700; color: var(--accent); letter-spacing: .06em;
+}
+.inst-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+
+/* ── Role grid ────────────────────────────────────────────────────────────── */
+.role-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1rem; margin-bottom: 1.5rem;
+}
+.role-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; padding: 1.1rem 1.15rem; position: relative; overflow: hidden;
+  transition: border-color .25s;
+}
+.role-card.ai-managed { border-color: rgba(168,85,247,.45); }
+.role-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--rc-color, var(--border));
+}
+.role-card-title {
+  font-family: var(--font-mono); font-size: .72rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .1em; color: var(--rc-color, var(--muted));
+  margin-bottom: .75rem; display: flex; align-items: center; gap: .5rem;
+}
+.rc-kpi-row { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin-bottom: .65rem; }
+.rc-kpi {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 9px; padding: .5rem .6rem; text-align: center;
+}
+.rc-kpi-val { font-family: var(--font-mono); font-size: 1.35rem; font-weight: 700; line-height: 1.1; }
+.rc-kpi-lbl { font-size: .58rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-top: .1rem; }
+.phase-badge {
+  display: inline-flex; align-items: center; gap: .3rem;
+  padding: .2rem .55rem; border-radius: 999px; font-size: .65rem; font-weight: 700;
+  border: 1px solid var(--border); color: var(--muted);
+}
+.phase-badge.receive { border-color: rgba(59,130,246,.5); color: #60a5fa; }
+.phase-badge.ship    { border-color: rgba(168,85,247,.5); color: #c084fc; }
+.phase-badge.order   { border-color: rgba(245,200,66,.5); color: var(--accent); }
+.phase-badge.done    { border-color: rgba(34,197,94,.5);  color: #4ade80; }
+.phase-badge.idle    { opacity: .5; }
+.ai-pill {
+  display: inline-flex; align-items: center; gap: .25rem;
+  padding: .15rem .5rem; border-radius: 999px; font-size: .62rem; font-weight: 700;
+  background: rgba(168,85,247,.15); border: 1px solid rgba(168,85,247,.4);
+  color: #c084fc; margin-left: auto;
+}
+.replace-btn {
+  margin-top: .6rem; width: 100%; font-size: .72rem; padding: .38rem .6rem;
+  display: flex; align-items: center; justify-content: center; gap: .35rem;
+  background: rgba(168,85,247,.1); border: 1px solid rgba(168,85,247,.35);
+  border-radius: 8px; color: #c084fc; cursor: pointer; transition: all .18s;
+}
+.replace-btn:hover { background: rgba(168,85,247,.2); border-color: rgba(168,85,247,.6); }
+.replace-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+/* ── Demand / bullwhip card ───────────────────────────────────────────────── */
+.inst-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; padding: 1.1rem 1.15rem; margin-bottom: 1.25rem;
+}
+.inst-card-title {
+  font-family: var(--font-mono); font-size: .7rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .1em; color: var(--muted);
+  margin-bottom: .85rem; display: flex; align-items: center; gap: .5rem;
+}
+.inst-card-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+.bw-bar-row { display: flex; align-items: center; gap: .75rem; margin-bottom: .6rem; }
+.bw-label { width: 90px; font-size: .75rem; text-align: right; color: var(--muted); flex-shrink: 0; }
+.bw-track { flex: 1; height: 18px; background: var(--surface2); border-radius: 5px; overflow: hidden; position: relative; border: 1px solid var(--border); }
+.bw-fill  { height: 100%; border-radius: 5px; transition: width .8s ease; }
+.bw-marker { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(255,255,255,.2); }
+.bw-val { width: 42px; font-family: var(--font-mono); font-size: .75rem; color: var(--text); flex-shrink: 0; }
+
+/* ── Demand bar chart ─────────────────────────────────────────────────────── */
+#demand-chart { display: flex; align-items: flex-end; gap: 2px; height: 70px; margin-top: .5rem; }
+.dc-col { display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 6px; }
+.dc-bar { background: var(--accent); border-radius: 2px 2px 0 0; width: 100%; min-height: 2px; transition: height .3s; }
+.dc-lbl { font-family: var(--font-mono); font-size: .48rem; color: var(--muted); margin-top: 1px; }
+
+/* ── Refresh status ───────────────────────────────────────────────────────── */
+.refresh-status { font-size: .7rem; color: var(--muted); text-align: right; margin-bottom: .5rem; }
+.status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--success); margin-right: .3rem; animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+/* ── Role color variables ─────────────────────────────────────────────────── */
+:root {
+  --retailer-color:    #f5c842;
+  --wholesaler-color:  #3b82f6;
+  --distributor-color: #a855f7;
+  --factory-color:     #22c55e;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-container" style="max-width:1100px;">
+
+  <!-- Header -->
+  <div class="inst-header">
+    <div>
+      <h1 style="font-size:1.4rem; font-weight:800; margin:0 0 .25rem;">
+        🎓 Instructor View
+      </h1>
+      <div style="font-size:.82rem; color:var(--muted);">{{ session.name }} · Week <span id="current-week">{{ session.current_week }}</span> / {{ session.max_weeks }}</div>
+    </div>
+    <div class="inst-actions">
+      <span class="inst-badge"><span class="status-dot"></span> Auto-refreshing</span>
+      <a href="{% url 'export_csv' session.id %}" class="btn btn-ghost btn-sm">⬇ CSV Export</a>
+      <a href="{% url 'results' session.id %}" class="btn btn-ghost btn-sm">📊 Results</a>
+      <a href="{% url 'lobby' session.id %}" class="btn btn-ghost btn-sm">← Lobby</a>
+    </div>
+  </div>
+
+  <div class="refresh-status" id="refresh-status">Refreshing every 4 s…</div>
+
+  <!-- Role cards -->
+  <div class="role-grid" id="role-grid">
+    {% for player in players %}
+    {% with role=player.role emoji=role_emojis|get_item:role %}
+    <div class="role-card {% if ai_roles|get_item:role %}ai-managed{% endif %}"
+         id="card-{{ role }}"
+         style="--rc-color: var(--{{ role }}-color);">
+      <div class="role-card-title">
+        {{ emoji }} {{ role|title }}
+        {% if ai_roles|get_item:role %}
+        <span class="ai-pill">🤖 AI</span>
+        {% endif %}
+      </div>
+      <div class="rc-kpi-row">
+        <div class="rc-kpi">
+          <div class="rc-kpi-val" id="{{ role }}-inv">{{ player.inventory }}</div>
+          <div class="rc-kpi-lbl">Inventory</div>
+        </div>
+        <div class="rc-kpi">
+          <div class="rc-kpi-val" id="{{ role }}-blg" style="color:{% if player.backlog > 0 %}#f87171{% else %}var(--text){% endif %}">{{ player.backlog }}</div>
+          <div class="rc-kpi-lbl">Backlog</div>
+        </div>
+        <div class="rc-kpi">
+          <div class="rc-kpi-val" id="{{ role }}-cost" style="font-size:1.05rem;">${{ player.total_cost|floatformat:1 }}</div>
+          <div class="rc-kpi-lbl">Total cost</div>
+        </div>
+        <div class="rc-kpi">
+          <div class="rc-kpi-val" id="{{ role }}-phase" style="font-size:.85rem;">—</div>
+          <div class="rc-kpi-lbl">Phase</div>
+        </div>
+      </div>
+      {% if session.status == 'playing' and not ai_roles|get_item:role %}
+      <form method="POST" action="{% url 'ai_replace_role' session.id role %}" onsubmit="return confirmAI('{{ role }}')">
+        {% csrf_token %}
+        <button type="submit" class="replace-btn" id="replace-{{ role }}">
+          🤖 Replace with AI
+        </button>
+      </form>
+      {% endif %}
+    </div>
+    {% endwith %}
+    {% endfor %}
+  </div>
+
+  <!-- Bullwhip section -->
+  {% if bullwhip %}
+  <div class="inst-card">
+    <div class="inst-card-title">Bullwhip Effect Index (σ orders / σ demand)</div>
+    {% for role, ratio in bullwhip.items %}
+    {% if role != 'customer' %}
+    <div class="bw-bar-row">
+      <div class="bw-label">{{ role|title }}</div>
+      <div class="bw-track">
+        <div class="bw-fill" style="width:{{ ratio|floatformat:0 }}%; background:
+          {% if ratio >= 3 %}#ef4444{% elif ratio >= 1.5 %}#f59e0b{% else %}#22c55e{% endif %};
+          max-width:100%;"></div>
+        <div class="bw-marker" style="left:{% widthratio 1 bullwhip_max 100 %}%;"></div>
+      </div>
+      <div class="bw-val">{{ ratio|floatformat:2 }}×</div>
+    </div>
+    {% endif %}
+    {% endfor %}
+    <div style="font-size:.68rem; color:var(--muted); margin-top:.5rem;">
+      Vertical line = ratio of 1 (no amplification). Values above 1 indicate bullwhip amplification.
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Demand history -->
+  <div class="inst-card">
+    <div class="inst-card-title">Customer Demand History</div>
+    <div id="demand-chart">
+      {% comment %}Filled by JS on first poll{% endcomment %}
+    </div>
+    <div style="font-size:.68rem; color:var(--muted); margin-top:.4rem;">
+      Demand mode:
+      {% if session.demand_schedule == 'classic' %}
+        <span style="color:var(--accent);">Classic MIT (4 → 8)</span>
+      {% elif session.demand_schedule %}
+        <span style="color:var(--accent);">Custom schedule</span>
+      {% else %}
+        <span style="color:var(--muted);">Manual (live customer)</span>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<script>
+const SESSION_ID   = {{ session.id }};
+const POLL_URL     = `/game/${SESSION_ID}/lobby-status/`;
+const CSRF         = '{{ csrf_token }}';
+const ROLE_COLORS  = {
+  retailer:    '#f5c842',
+  wholesaler:  '#3b82f6',
+  distributor: '#a855f7',
+  factory:     '#22c55e',
+};
+const PHASE_LABELS = {idle:'Idle', receive:'Receive', ship:'Ship', order:'Order', done:'Done✓'};
+
+async function poll() {
+  try {
+    const r = await fetch(POLL_URL);
+    if (!r.ok) return;
+    const d = await r.json();
+
+    document.getElementById('current-week').textContent = d.current_week ?? '?';
+    document.getElementById('refresh-status').innerHTML =
+      '<span class="status-dot"></span>Last update: ' + new Date().toLocaleTimeString();
+
+    // Update role cards from players array
+    (d.players || []).forEach(p => {
+      const role = p.role;
+      const el = id => document.getElementById(role + '-' + id);
+      if (el('inv'))  el('inv').textContent  = p.inventory ?? '—';
+      if (el('blg')) {
+        el('blg').textContent = p.backlog ?? '—';
+        el('blg').style.color = (p.backlog > 0) ? '#f87171' : 'var(--text)';
+      }
+      if (el('cost')) el('cost').textContent = '$' + (p.total_cost ?? 0).toFixed(1);
+      // Phase from phases map (returned in lobby-status under phases key if available)
+    });
+
+    // Update phase badges from phases map
+    const phases = d.phases || {};
+    Object.entries(phases).forEach(([role, phase]) => {
+      const el = document.getElementById(role + '-phase');
+      if (el) {
+        el.textContent = PHASE_LABELS[phase] || phase;
+        el.className   = 'rc-kpi-val';
+        el.style.fontSize = '.85rem';
+        el.style.color = phase === 'done' ? '#4ade80'
+          : phase === 'order'   ? '#f5c842'
+          : phase === 'ship'    ? '#c084fc'
+          : phase === 'receive' ? '#60a5fa'
+          : '';
+      }
+    });
+
+    // Render demand chart
+    const demandEl = document.getElementById('demand-chart');
+    const lastDemand = d.last_demand;
+    // Build chart from chat messages — actually, rebuild from history if available.
+    // For now show a simple bar for the current demand.
+    if (lastDemand !== undefined && lastDemand !== null) {
+      demandEl.innerHTML = `<div class="dc-col">
+        <div class="dc-bar" style="height:${Math.min(lastDemand * 4, 64)}px;background:#f5c842;"></div>
+        <div class="dc-lbl">W${d.current_week}</div>
+      </div>` + (demandEl.innerHTML || '');
+    }
+
+  } catch(e) {
+    console.warn('poll error', e);
+  }
+}
+
+function confirmAI(role) {
+  return confirm(`Replace ${role} with AI? The server will auto-complete their phases each week using the base-stock policy. This cannot be undone for this session.`);
+}
+
+poll();
+setInterval(poll, 4000);
+</script>
+{% endblock %}

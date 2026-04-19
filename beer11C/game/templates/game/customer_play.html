@@ -1,0 +1,713 @@
+{% extends "game/base.html" %}
+{% block title %}Customer — {{ session.name }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* ── Demand form ─────────────────────────────────────────────────────────── */
+  .demand-form {
+    background: var(--surface);
+    border: 2px solid rgba(245,200,66,.45);
+    border-radius: 18px;
+    padding: 2.25rem 2rem;
+    text-align: center;
+    transition: border-color .25s, box-shadow .25s;
+    position: relative; overflow: hidden;
+  }
+  .demand-form::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  }
+  .demand-form.submitted-state {
+    border-color: rgba(34,197,94,.5);
+    box-shadow: 0 0 0 2px rgba(34,197,94,.08);
+  }
+  .demand-form.submitted-state::before {
+    background: linear-gradient(90deg, transparent, var(--success), transparent);
+  }
+  .demand-input {
+    font-family: var(--font-mono);
+    font-size: 4rem;
+    font-weight: 700;
+    text-align: center;
+    width: 100%;
+    background: var(--surface2);
+    border: 2px solid var(--border);
+    border-radius: 14px;
+    color: var(--accent);
+    padding: .85rem;
+    outline: none;
+    margin: .85rem 0;
+    transition: border-color .18s, box-shadow .18s;
+    text-shadow: 0 0 20px rgba(245,200,66,.25);
+  }
+  .demand-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-dim);
+  }
+  .preset-row {
+    display: flex; gap: .5rem; flex-wrap: wrap;
+    justify-content: center; margin-bottom: 1.1rem;
+  }
+  .preset-btn {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 9px; color: var(--text); font-family: var(--font-mono);
+    font-size: .9rem; padding: .4rem .9rem; cursor: pointer;
+    transition: all .18s;
+  }
+  .preset-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+  .preset-btn.active { border-color: var(--accent); background: rgba(245,200,66,.14); color: var(--accent); box-shadow: 0 0 0 1px rgba(245,200,66,.2); }
+  .ready-row { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: .75rem; }
+  .ready-pill {
+    display: inline-flex; align-items: center; gap: .3rem;
+    padding: .22rem .65rem; border-radius: 999px; font-size: .7rem; font-weight: 600;
+    border: 1px solid var(--border); color: var(--muted); transition: all .2s;
+  }
+  .ready-pill.submitted { border-color: var(--success); color: var(--success); background: rgba(34,197,94,.1); }
+  .ready-pill.connected { border-color: var(--accent); color: var(--accent); background: rgba(245,200,66,.07); }
+  .ready-pill.offline   { opacity: .35; }
+
+  /* Bar chart */
+  .bar-chart { display: flex; align-items: flex-end; gap: 3px; height: 80px; margin-top: .75rem; }
+  .bar-col   { display: flex; flex-direction: column; align-items: center; flex: 1; }
+  .bar-fill  { background: var(--accent); border-radius: 3px 3px 0 0; width: 100%; min-height: 2px; }
+  .bar-label { font-family: var(--font-mono); font-size: .55rem; color: var(--muted); margin-top: 2px; }
+
+  /* Toast */
+  #toast-container { position: fixed; bottom: 1.5rem; right: 1.5rem; display: flex; flex-direction: column; gap: .4rem; z-index: 9999; pointer-events: none; }
+  .toast { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: .55rem .95rem; font-size: .8rem; animation: slideIn .22s ease, fadeOut .3s ease 3s forwards; backdrop-filter: blur(8px); }
+  .toast.success { border-color: var(--success); color: #4ade80; }
+  .toast.error   { border-color: var(--danger);  color: #fca5a5; }
+  @keyframes slideIn { from{transform:translateX(120%);opacity:0} to{transform:none;opacity:1} }
+  @keyframes fadeOut { to{opacity:0;transform:translateX(120%)} }
+  #conn-dot { display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--muted);margin-right:.4rem;transition:background .3s; }
+  #conn-dot.online  { background:var(--success);box-shadow:0 0 6px var(--success); }
+  #conn-dot.offline { background:var(--danger); }
+
+  /* Lobby overlay */
+  #lobby-overlay {
+    position: fixed; inset: 0;
+    background: rgba(10,12,17,.94);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000; backdrop-filter: blur(8px);
+  }
+  #lobby-overlay.hidden { display: none; }
+  .lobby-box {
+    background: var(--surface); border: 1px solid rgba(245,200,66,.2);
+    border-radius: 18px; padding: 2rem; max-width: 440px; width: 90%; text-align: center;
+    box-shadow: var(--shadow-lg);
+    animation: fadeUp .3s ease both;
+  }
+  .lobby-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: .5rem .75rem; border-radius: 10px;
+    background: var(--surface2); border: 1px solid var(--border);
+    margin-bottom: .4rem; font-size: .83rem;
+    transition: border-color .2s;
+  }
+  .lobby-row.ready-state { border-color: var(--success); box-shadow: 0 0 8px rgba(34,197,94,.12); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="toast-container"></div>
+
+<!-- Lobby overlay -->
+<div id="lobby-overlay" {% if session.status == 'playing' %}class="hidden"{% endif %}>
+  <div class="lobby-box">
+    <div style="margin-bottom:.5rem;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="8" r="4.5" fill="#f5c842" opacity="0.9"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="#f5c842" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.7"/></svg></div>
+    <h2 style="font-family:var(--font-mono); font-size:1.2rem; margin-bottom:.25rem;">
+      {{ player_session.name|default:"Customer" }}
+      <span class="role-badge role-retailer" style="background:rgba(245,200,66,.15);color:var(--accent);margin-left:.4rem;">customer</span>
+    </h2>
+    <p style="color:var(--muted); font-size:.83rem; margin-bottom:1.25rem;">{{ session.name }}</p>
+
+      <div style="background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.2);border-radius:8px;padding:.85rem;margin-bottom:1.25rem;font-size:.8rem;color:var(--muted);text-align:left;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><circle cx="12" cy="8" r="4.5" fill="currentColor" opacity="0.85"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.65"/></svg>
+        <strong style="color:var(--text);">Your role:</strong> You are the end customer.
+        Each week you decide how many units to order. The Retailer must fulfill your demand — but they can't see what you'll order next.
+        You control the signal that drives the entire supply chain.
+        <br><br>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" stroke-width="2" fill="none" opacity="0.75"/><line x1="12" y1="9" x2="12" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="12" y1="17" x2="12.01" y2="17" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+        Orders and shipments take <strong style="color:var(--text)">2 weeks</strong> to travel each direction.
+        If you over-order one week, the whole chain will panic-order — this is the Bullwhip Effect.
+      </div>
+
+    <div style="margin-bottom:1.25rem;">
+      <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.5rem;">Waiting for players</div>
+      {% for r in roles %}
+      <div class="lobby-row" id="lobby-row-{{ r }}">
+        <span>{% if r == 'customer' %}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><circle cx="12" cy="8" r="4.5" fill="currentColor" opacity="0.9"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.7"/></svg>{% elif r == 'retailer' %}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><path d="M3 10l1-6h16l1 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M3 10v10a2 2 0 002 2h14a2 2 0 002-2V10" stroke="currentColor" stroke-width="2" fill="none"/></svg>{% elif r == 'wholesaler' %}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><rect x="2" y="6" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><rect x="6" y="2" width="12" height="4" rx="1" fill="currentColor" opacity="0.5"/></svg>{% elif r == 'distributor' %}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><rect x="1" y="6" width="15" height="10" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M16 9h4l3 4v3h-7V9z" stroke="currentColor" stroke-width="2" fill="none"/></svg>{% else %}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><path d="M2 20V10l5-4v4l5-4v4l5-4v10" stroke="currentColor" stroke-width="2" fill="none"/><rect x="2" y="16" width="20" height="6" rx="1" fill="currentColor" opacity="0.3"/></svg>{% endif %} {{ r|title }}</span>
+        <span id="lobby-status-{{ r }}" style="font-size:.72rem;color:var(--muted);">waiting…</span>
+      </div>
+      {% endfor %}
+    </div>
+
+    <button class="btn btn-primary" id="ready-btn" onclick="markReady()"
+            style="width:100%;justify-content:center;font-size:1rem;padding:.75rem;">
+      ✓ I'm Ready
+    </button>
+    <div id="lobby-msg" style="font-size:.78rem;color:var(--muted);margin-top:.75rem;">Waiting for everyone…</div>
+  </div>
+</div>
+
+<!-- Game screen -->
+<div id="game-screen">
+
+<!-- Header -->
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;margin-bottom:1.5rem;">
+  <div style="display:flex;align-items:center;gap:.75rem;">
+    <span style="font-size:1.8rem;"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="color:#f5c842;"><circle cx="12" cy="8" r="4.5" fill="currentColor" opacity="0.9"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.7"/></svg></span>
+    <div>
+      <h2 style="font-family:var(--font-mono);font-size:1.2rem;line-height:1.2;">
+        {{ player_session.name|default:"Customer" }}
+        <span class="role-badge" style="background:rgba(245,200,66,.15);color:var(--accent);margin-left:.4rem;">customer</span>
+      </h2>
+      <div style="font-size:.8rem;color:var(--muted);">{{ session.name }}</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:1rem;">
+    <div style="font-size:.8rem;color:var(--muted);">
+      <span id="conn-dot"></span><span id="conn-label">Connecting…</span>
+    </div>
+    <div class="week-badge">Week <strong id="current-week">{{ session.current_week }}</strong> / {{ session.max_weeks }}</div>
+  </div>
+</div>
+
+<!-- Retailer backlog indicator (only info customer can see) -->
+<div class="card" style="margin-bottom:1.5rem;">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
+    <div>
+      <div class="card-title">Retailer Status</div>
+      <div style="font-size:.8rem;color:var(--muted);">If backlog > 0, your order wasn't fully filled last week</div>
+    </div>
+    <div style="font-family:var(--font-mono);font-size:1.8rem;font-weight:700;" id="retailer-backlog-display">—</div>
+  </div>
+  <div style="font-size:.72rem;color:var(--muted);margin-top:.3rem;" id="backlog-label">units backlogged</div>
+</div>
+
+
+<!-- ── Week Summary Modal ─────────────────────────────────────────────────── -->
+<div id="week-summary-overlay" style="
+  display:none; position:fixed; inset:0; z-index:800;
+  background:rgba(13,15,20,.88); backdrop-filter:blur(5px);
+  align-items:center; justify-content:center;
+">
+  <div id="week-summary-box" style="
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:18px; padding:2rem 1.75rem; max-width:480px; width:92%;
+    box-shadow:0 32px 80px rgba(0,0,0,.5);
+    animation: summaryPop .3s cubic-bezier(.34,1.56,.64,1);
+    position:relative;
+  ">
+    <!-- Header -->
+    <div style="text-align:center; margin-bottom:1.5rem;">
+      <div style="font-size:2.2rem; margin-bottom:.4rem;" id="sum-week-icon">📊</div>
+      <div style="font-family:var(--font-mono); font-size:1rem; font-weight:700; color:var(--accent);" id="sum-week-title">
+        Semaine — Résumé
+      </div>
+      <div style="font-size:.75rem; color:var(--muted); margin-top:.2rem;" id="sum-week-sub"></div>
+    </div>
+
+    <!-- Stats grid -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:.65rem; margin-bottom:1.25rem;" id="sum-stats">
+      <!-- filled by JS -->
+    </div>
+
+    <!-- Cost highlight -->
+    <div style="
+      background:var(--surface2); border:1px solid var(--border);
+      border-radius:10px; padding:.85rem 1rem;
+      display:flex; align-items:center; justify-content:space-between;
+      margin-bottom:1.25rem;
+    ">
+      <div>
+        <div style="font-size:.68rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:.15rem;">
+          Coût cette semaine
+        </div>
+        <div style="font-family:var(--font-mono); font-size:1.5rem; font-weight:700; color:var(--danger);" id="sum-cost-week">
+          —
+        </div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:.68rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:.15rem;">
+          Coût total cumulé
+        </div>
+        <div style="font-family:var(--font-mono); font-size:1.5rem; font-weight:700; color:var(--accent);" id="sum-cost-total">
+          —
+        </div>
+      </div>
+    </div>
+
+    <!-- Performance indicator -->
+    <div id="sum-perf" style="
+      border-radius:8px; padding:.6rem .85rem;
+      font-size:.8rem; margin-bottom:1.25rem; display:none;
+    "></div>
+
+    <!-- Continue button -->
+    <button onclick="closeSummary()" class="btn btn-primary" style="
+      width:100%; justify-content:center; font-size:1rem; padding:.8rem;
+    ">
+      Continuer →
+    </button>
+
+    <!-- Auto-close countdown -->
+    <div style="text-align:center; margin-top:.65rem; font-size:.72rem; color:var(--muted);" id="sum-countdown">
+      Fermeture automatique dans <span id="sum-count-num">15</span>s
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes summaryPop {
+  from { transform: scale(.85) translateY(16px); opacity: 0; }
+  to   { transform: scale(1)   translateY(0);    opacity: 1; }
+}
+.sum-stat-box {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: .65rem .75rem;
+  text-align: center;
+}
+.sum-stat-label {
+  font-size: .62rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  margin-bottom: .25rem;
+}
+.sum-stat-value {
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+</style>
+
+
+<!-- Players this week -->
+<div class="card" style="margin-bottom:1.5rem;">
+  <div class="card-title">All Players — Week Status</div>
+  <div class="ready-row" id="ready-row">
+    {% for r in roles %}
+    <div class="ready-pill offline" id="pill-{{ r }}">○ {{ r|title }}</div>
+    {% endfor %}
+  </div>
+  <div id="waiting-msg" style="font-size:.8rem;color:var(--muted);">Waiting for all to submit…</div>
+</div>
+
+<!-- Demand submission form -->
+<div class="demand-form" id="demand-form" style="margin-bottom:1.5rem;">
+  <div class="card-title">Your Order — Week <span id="form-week">{{ session.current_week|add:1 }}</span></div>
+
+  <div id="submit-section">
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:.5rem;">How many units do you demand this week?</div>
+    <input type="number" id="demand-qty" class="demand-input"
+           min="0" placeholder="0" value="4" />
+
+    <!-- Quick presets -->
+    <div class="preset-row">
+      <button class="preset-btn" onclick="setQty(0)">0</button>
+      <button class="preset-btn" onclick="setQty(2)">2</button>
+      <button class="preset-btn" onclick="setQty(4)">4</button>
+      <button class="preset-btn" onclick="setQty(6)">6</button>
+      <button class="preset-btn" onclick="setQty(8)">8</button>
+      <button class="preset-btn" onclick="setQty(10)">10</button>
+      <button class="preset-btn" onclick="setQty(12)">12</button>
+      <button class="preset-btn" onclick="setQty(16)">16</button>
+      <button class="preset-btn" onclick="setQty(20)">20</button>
+    </div>
+
+    <div style="font-size:.78rem;color:var(--muted);margin-bottom:.75rem;">
+      💡 The supply chain can't see this until you submit. Stable demand = stable chain. Erratic demand = Bullwhip Effect.
+    </div>
+
+    <!-- Demand mode -->
+    <div style="display:flex;gap:.5rem;margin-bottom:.75rem;flex-wrap:wrap;">
+      <span style="font-size:.72rem;color:var(--muted);align-self:center;">Mode:</span>
+      <button type="button" id="mode-static" class="preset-btn active" onclick="setMode('static')">📊 Static</button>
+      <button type="button" id="mode-trend" class="preset-btn" onclick="setMode('trend-up')">📈 Trend Up</button>
+      <button type="button" id="mode-seasonal" class="preset-btn" onclick="setMode('seasonal')">〰️ Seasonal</button>
+      <button type="button" id="mode-shock" class="preset-btn" onclick="setMode('shock')">⚡ Shock</button>
+    </div>
+    <div id="mode-hint" style="font-size:.7rem;color:var(--muted);margin-bottom:.5rem;min-height:16px;"></div>
+    <button class="btn btn-primary" onclick="submitDemand()"
+            style="width:100%;justify-content:center;font-size:1.1rem;padding:.85rem;">
+      ✓ Submit Demand
+    </button>
+  </div>
+
+  <div id="submitted-section" style="display:none;text-align:center;padding:1.5rem;">
+    <div style="font-size:2.5rem;">✅</div>
+    <div style="font-family:var(--font-mono);color:var(--success);margin-top:.5rem;font-size:1.1rem;">Demand submitted!</div>
+    <div style="color:var(--muted);font-size:.9rem;margin-top:.4rem;" id="submitted-qty"></div>
+
+    <!-- Week-ready: customer must also confirm before week advances -->
+    <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border);">
+      <div style="font-size:.76rem;color:var(--muted);margin-bottom:.65rem;">
+        Waiting for other players · confirm when you are ready
+      </div>
+      <button id="btn-week-ready" onclick="doWeekReady()"
+              class="btn btn-primary"
+              style="width:100%;justify-content:center;font-size:1rem;padding:.75rem;">
+        ✓ Ready for Next Week
+      </button>
+      <div style="color:var(--muted);font-size:.76rem;margin-top:.6rem;" id="waiting-count"></div>
+    </div>
+  </div>
+
+  <div id="game-over-section" style="display:none;text-align:center;padding:1.5rem;">
+    <div style="font-size:2.5rem;">🏁</div>
+    <div style="font-family:var(--font-mono);color:var(--accent);font-size:1.1rem;margin-top:.5rem;">Game Over!</div>
+    <a id="results-link" href="#" class="btn btn-primary" style="margin-top:1rem;">📊 View Results</a>
+  </div>
+</div>
+
+<!-- Demand history -->
+<div class="card" style="margin-bottom:2rem;">
+  <div class="card-title">My Demand History</div>
+  <div class="bar-chart" id="bar-chart">
+    {% if demand_history %}
+      {% for d in demand_history %}
+      <div class="bar-col">
+        <div class="bar-fill" style="height:{{ d.quantity|add:2 }}px;" title="W{{ d.week }}: {{ d.quantity }}"></div>
+        <div class="bar-label">W{{ d.week }}</div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div style="color:var(--muted);font-size:.82rem;padding:.5rem;">No demand submitted yet.</div>
+    {% endif %}
+  </div>
+  <div id="event-log" style="max-height:140px;overflow-y:auto;margin-top:.75rem;"></div>
+</div>
+
+</div><!-- /#game-screen -->
+
+<script>
+const WS_SCHEME = (location.protocol === 'https:') ? 'wss' : 'ws';
+const WS_URL = `${WS_SCHEME}://${location.host}{{ ws_path }}`;
+const MY_ROLE = 'customer';
+const EMOJIS  = {customer:'👤',retailer:'🛒',wholesaler:'🏪',distributor:'🚚',factory:'🏭'};
+let ws, hasSubmitted = false, weekReadyClicked = false, gameStarted = {% if session.status == 'playing' %}true{% else %}false{% endif %};
+
+function connect() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen  = ()  => { setConn(true); log('Connected'); };
+  ws.onclose = e   => { setConn(false); if(e.code!==1000){log('Reconnecting…');setTimeout(connect,3000);} };
+  ws.onerror = ()  => setConn(false);
+  ws.onmessage = e => handle(JSON.parse(e.data));
+}
+function send(obj) { if(ws&&ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
+
+function handle(msg) {
+  switch(msg.type) {
+    case 'ping': send({type:'pong'}); break;
+
+    case 'state_update':
+    case 'game_started':
+    case 'week_complete':
+
+      // Only hide lobby when the server says the game is playing
+      if (msg.status === 'playing' && !gameStarted) {
+        gameStarted = true;
+        document.getElementById('lobby-overlay').classList.add('hidden');
+      }
+      updateState(msg);
+      if(msg.week>0){
+        hasSubmitted=false;
+        weekReadyClicked=false;
+        showSubmit();
+        log(`W${msg.week} processed — submit your Week ${(msg.week||0)+1} demand`);
+      }
+      if(msg.is_finished) showGameOver(msg);
+      document.getElementById('form-week').textContent = (msg.week||0)+1;
+      suggestDemand();
+      break;
+
+    case 'week_open':
+      // New week opened — reset demand form
+      if (msg.status === 'playing' && !gameStarted) {
+        gameStarted = true;
+        document.getElementById('lobby-overlay').classList.add('hidden');
+      }
+      hasSubmitted = false;
+      weekReadyClicked = false;
+      showSubmit();
+      document.getElementById('form-week').textContent = (msg.week||0)+1;
+      suggestDemand();
+      log(`Week ${(msg.week||0)+1} opened — submit your demand`);
+      break;
+
+    case 'all_phases_done':
+      // Everyone finished their phases — highlight week-ready button
+      {
+        const btn = document.getElementById('btn-week-ready');
+        if (btn && !weekReadyClicked) {
+          btn.style.boxShadow = '0 0 16px rgba(245,200,66,.5)';
+          toast('✅ All players done — confirm next week!', 'success');
+        }
+      }
+      break;
+
+    case 'week_ready_status':
+      {
+        const readyCount = (msg.ready_for_next || []).length;
+        const total = msg.total || 5;
+        const wc = document.getElementById('waiting-count');
+        if (wc) wc.textContent = readyCount >= total
+          ? '⏳ Processing next week…'
+          : `${readyCount} / ${total} ready for next week`;
+      }
+      break;
+
+    case 'ready_status':
+      updatePills(msg);
+      updateLobbyRows(msg);
+      if(msg.status==='playing'&&!gameStarted){ gameStarted=true; document.getElementById('lobby-overlay').classList.add('hidden'); }
+      if(hasSubmitted){
+        const rem=5-(msg.submitted||[]).length;
+        document.getElementById('waiting-count').textContent = rem>0?`Waiting for ${rem} more…`:'Processing week…';
+      }
+      break;
+
+    case 'player_joined': toast(`${EMOJIS[msg.role]||''} ${msg.name} joined`,'success'); break;
+    case 'player_left':   toast(`${msg.name} left`); break;
+    case 'error':         toast(msg.message,'error'); break;
+    case 'game_over':     showGameOver(msg); break;
+    case 'week_summary':
+        showWeekSummary(msg.week_summary, msg.week);
+        break;
+  }
+}
+
+function updateState(msg) {
+  document.getElementById('current-week').textContent = msg.week||0;
+  const blg = msg.retailer_backlog||0;
+  const blgEl = document.getElementById('retailer-backlog-display');
+  blgEl.textContent = blg;
+  blgEl.style.color = blg===0?'var(--success)':blg<5?'var(--accent)':'var(--danger)';
+  document.getElementById('backlog-label').textContent = blg===0?'✓ Retailer fulfilled all orders':'units backlogged — retailer couldn\'t fill your order';
+
+  // Update bar chart with new demand history
+  const hist = msg.demand_history||[];
+  if(hist.length){
+    const maxQ = Math.max(...hist.map(d=>d.quantity),1);
+    const bar  = document.getElementById('bar-chart');
+    bar.innerHTML = hist.map(d=>`
+      <div class="bar-col">
+        <div class="bar-fill" style="height:${Math.round((d.quantity/maxQ)*70)+4}px" title="W${d.week}: ${d.quantity}"></div>
+        <div class="bar-label">W${d.week}</div>
+      </div>`).join('');
+  }
+}
+
+function updatePills(msg) {
+  const sub=msg.submitted||[], con=msg.connected||[];
+  ['customer','retailer','wholesaler','distributor','factory'].forEach(r=>{
+    const pill=document.getElementById('pill-'+r); if(!pill) return;
+    if(sub.includes(r))       { pill.className='ready-pill submitted'; pill.textContent='✓ '+r.charAt(0).toUpperCase()+r.slice(1); }
+    else if(con.includes(r))  { pill.className='ready-pill connected'; pill.textContent='● '+r.charAt(0).toUpperCase()+r.slice(1); }
+    else                       { pill.className='ready-pill offline';  pill.textContent='○ '+r.charAt(0).toUpperCase()+r.slice(1); }
+  });
+  const rem=5-sub.length;
+  document.getElementById('waiting-msg').textContent = rem>0?`Waiting for ${rem} more…`:'All submitted! Processing…';
+}
+
+function updateLobbyRows(msg){
+  const rdy=msg.ready||[], con=msg.connected||[];
+  ['customer','retailer','wholesaler','distributor','factory'].forEach(r=>{
+    const row=document.getElementById('lobby-row-'+r);
+    const st =document.getElementById('lobby-status-'+r);
+    if(!row||!st) return;
+    if(rdy.includes(r))      { row.classList.add('ready-state'); st.textContent='✓ Ready'; }
+    else if(con.includes(r)) { st.textContent='● Connected'; }
+    else                      { st.textContent='○ Offline'; }
+  });
+  const notReady=5-(rdy.length);
+  const lm=document.getElementById('lobby-msg');
+  if(lm) lm.textContent=notReady>0?`Waiting for ${notReady} more…`:'All ready! Starting…';
+}
+
+function markReady(){
+  send({type:'player_ready'});
+  document.getElementById('ready-btn').disabled=true;
+  document.getElementById('ready-btn').textContent='⏳ Waiting…';
+}
+
+function setQty(n){
+  document.getElementById('demand-qty').value=n;
+  document.querySelectorAll('.preset-btn').forEach(b=>b.classList.remove('active'));
+  event.target.classList.add('active');
+}
+
+let demandMode='static', demandWeek=0;
+function setMode(mode){
+  demandMode=mode;
+  document.querySelectorAll('[id^=mode-]').forEach(b=>b.classList.remove('active'));
+  document.getElementById('mode-'+mode)?.classList.add('active');
+  const hints={
+    'static':   'You set the same demand each week — no variation.',
+    'trend-up': 'Demand increases by 1 unit each week automatically.',
+    'seasonal': 'Demand oscillates in a sine wave pattern.',
+    'shock':    'Steady demand then a sudden large spike — classic bullwhip trigger.',
+  };
+  document.getElementById('mode-hint').textContent = hints[mode]||'';
+  suggestDemand();
+}
+
+function suggestDemand(){
+  const w = parseInt(document.getElementById('current-week').textContent||'0')+1;
+  demandWeek = w;
+  const base = 4;
+  let suggested = base;
+  if(demandMode==='trend-up')  suggested = base + Math.floor(w/2);
+  if(demandMode==='seasonal')  suggested = Math.max(1, Math.round(base + 4*Math.sin(w*Math.PI/5)));
+  if(demandMode==='shock')     suggested = w >= 10 && w <= 12 ? 20 : base;
+  document.getElementById('demand-qty').value = suggested;
+}
+
+function doWeekReady(){
+  if(weekReadyClicked) return;
+  weekReadyClicked = true;
+  send({type:'week_ready'});
+  const btn = document.getElementById('btn-week-ready');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Waiting for others…'; btn.style.boxShadow=''; }
+  const wc = document.getElementById('waiting-count');
+  if(wc) wc.textContent = 'Waiting for other players…';
+  log('Confirmed ready for next week');
+}
+
+function submitDemand(){
+  const raw=document.getElementById('demand-qty').value.trim();
+  const qty=parseInt(raw);
+  if(raw===''||isNaN(qty)||qty<0){ toast('Enter a valid non-negative number','error'); return; }
+  send({type:'submit_order', quantity:qty});
+  hasSubmitted=true;
+  document.getElementById('submit-section').style.display='none';
+  document.getElementById('submitted-section').style.display='block';
+  document.getElementById('demand-form').classList.add('submitted-state');
+  document.getElementById('submitted-qty').textContent=`You ordered ${qty} units from the retailer`;
+  log(`Submitted demand: ${qty} units`);
+}
+
+function showSubmit(){
+  document.getElementById('submit-section').style.display='block';
+  document.getElementById('submitted-section').style.display='none';
+  document.getElementById('demand-form').classList.remove('submitted-state');
+  hasSubmitted=false;
+  weekReadyClicked=false;
+  // Reset week-ready button
+  const btn = document.getElementById('btn-week-ready');
+  if(btn){ btn.disabled=false; btn.textContent='✓ Ready for Next Week'; btn.style.boxShadow=''; }
+}
+
+function showGameOver(msg){
+  document.getElementById('submit-section').style.display='none';
+  document.getElementById('submitted-section').style.display='none';
+  document.getElementById('game-over-section').style.display='block';
+  document.getElementById('results-link').href=msg.results_url||`/game/{{ session.id }}/results/`;
+  toast('🏁 Game over!','success');
+}
+
+function setConn(on){
+  document.getElementById('conn-dot').className=on?'online':'offline';
+  document.getElementById('conn-label').textContent=on?'Connected':'Reconnecting…';
+}
+function log(msg){
+  const el=document.getElementById('event-log');
+  const t=new Date().toLocaleTimeString();
+  el.innerHTML=`<div style="font-size:.75rem;color:var(--muted);padding:.2rem 0;border-bottom:1px solid rgba(255,255,255,.04);font-family:var(--font-mono);">📅 <span style="font-size:.68rem">${t}</span> ${msg}</div>`+el.innerHTML;
+}
+function toast(msg,type=''){
+  const c=document.getElementById('toast-container');
+  const d=document.createElement('div');
+  d.className='toast '+type; d.textContent=msg; c.appendChild(d);
+  setTimeout(()=>d.remove(),3600);
+}
+
+connect();
+
+let summaryTimer = null;
+let summaryCountdown = null;
+
+function showWeekSummary(s, week) {
+  if (!s) return;
+
+  // Icon based on performance
+  const icon  = (s.backlog || 0) === 0 ? '✅' : (s.backlog || 0) < 5 ? '⚠️' : '🔴';
+  const title = `Semaine ${week} — Résumé`;
+  const sub   = `Inventaire: ${s.inventory ?? '—'} · Backlog: ${s.backlog ?? 0}`;
+
+  document.getElementById('sum-week-icon').textContent  = icon;
+  document.getElementById('sum-week-title').textContent = title;
+  document.getElementById('sum-week-sub').textContent   = sub;
+
+  // Stats grid
+  const stats = [
+    { label: 'Reçu',        value: s.shipment_received ?? '—', color: 'var(--wholesaler-color)' },
+    { label: 'Expédié',     value: s.shipped ?? s.shipment_sent ?? '—', color: 'var(--accent)' },
+    { label: 'Commandé',    value: s.order_placed ?? '—', color: 'var(--accent2)' },
+    { label: 'Demande reçue', value: s.order_received ?? '—', color: 'var(--distributor-color)' },
+    { label: 'Inventaire',  value: s.inventory ?? '—', color: s.inventory > 0 ? 'var(--success)' : 'var(--danger)' },
+    { label: 'Backlog',     value: s.backlog ?? 0, color: (s.backlog || 0) > 0 ? 'var(--danger)' : 'var(--success)' },
+  ];
+
+  document.getElementById('sum-stats').innerHTML = stats.map(st => `
+    <div class="sum-stat-box">
+      <div class="sum-stat-label">${st.label}</div>
+      <div class="sum-stat-value" style="color:${st.color};">${st.value}</div>
+    </div>
+  `).join('');
+
+  // Costs
+  document.getElementById('sum-cost-week').textContent  = `$${(s.cost_this_week  ?? 0).toFixed(2)}`;
+  document.getElementById('sum-cost-total').textContent = `$${(s.total_cost ?? s.cumulative_cost ?? 0).toFixed(2)}`;
+
+  // Performance hint
+  const perf = document.getElementById('sum-perf');
+  if ((s.backlog || 0) === 0 && (s.inventory || 0) < 20) {
+    perf.style.display    = 'block';
+    perf.style.background = 'rgba(34,197,94,.08)';
+    perf.style.border     = '1px solid rgba(34,197,94,.25)';
+    perf.style.color      = 'var(--success)';
+    perf.textContent      = '✓ Bonne gestion ! Zéro backlog cette semaine.';
+  } else if ((s.backlog || 0) > 10) {
+    perf.style.display    = 'block';
+    perf.style.background = 'rgba(239,68,68,.08)';
+    perf.style.border     = '1px solid rgba(239,68,68,.25)';
+    perf.style.color      = 'var(--danger)';
+    perf.textContent      = `⚠ Rupture de stock importante : ${s.backlog} unités en backlog.`;
+  } else {
+    perf.style.display = 'none';
+  }
+
+  // Show overlay
+  const ov = document.getElementById('week-summary-overlay');
+  ov.style.display = 'flex';
+
+  // Auto-close countdown (15 seconds)
+  let n = 15;
+  document.getElementById('sum-count-num').textContent = n;
+  clearInterval(summaryCountdown);
+  summaryCountdown = setInterval(() => {
+    n--;
+    const el = document.getElementById('sum-count-num');
+    if (el) el.textContent = n;
+    if (n <= 0) { clearInterval(summaryCountdown); closeSummary(); }
+  }, 1000);
+}
+
+function closeSummary() {
+  clearInterval(summaryCountdown);
+  const ov = document.getElementById('week-summary-overlay');
+  if (ov) ov.style.display = 'none';
+}
+
+// Close on backdrop click
+document.getElementById('week-summary-overlay').addEventListener('click', function(e) {
+  if (e.target === this) closeSummary();
+});
+
+</script>
+{% endblock %}

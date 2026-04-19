@@ -1,0 +1,119 @@
+{% extends "game/base.html" %}
+{% block title %}Créer un compte — Beer Game{% endblock %}
+
+{% block extra_head %}
+<style>
+/* Reuse same auth styles */
+.auth-wrap { min-height:calc(100vh - 56px); display:flex; align-items:center; justify-content:center; padding:2rem 1rem; }
+.auth-card { width:100%; max-width:440px; background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:2.5rem 2rem; box-shadow:0 24px 64px rgba(0,0,0,.4); }
+.auth-logo { text-align:center; margin-bottom:2rem; }
+.auth-logo-icon { font-size:2.8rem; display:block; margin-bottom:.5rem; }
+.auth-logo-title { font-family:var(--font-mono); font-size:1.3rem; font-weight:700; color:var(--accent); letter-spacing:.05em; }
+.auth-logo-sub { font-size:.75rem; color:var(--muted); margin-top:.2rem; letter-spacing:.1em; text-transform:uppercase; }
+.auth-field { margin-bottom:1rem; }
+.auth-label { display:block; font-size:.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem; font-weight:600; }
+.auth-input { width:100%; background:var(--surface2); border:1.5px solid var(--border); border-radius:10px; color:var(--text); padding:.7rem 1rem; font-size:.95rem; font-family:var(--font-body); outline:none; transition:border-color .15s, box-shadow .15s; box-sizing:border-box; }
+.auth-input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(245,200,66,.12); }
+.auth-row { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; }
+.auth-btn { width:100%; padding:.8rem; font-size:1rem; font-weight:700; margin-top:.5rem; border-radius:10px; justify-content:center; }
+.auth-link { text-align:center; font-size:.83rem; color:var(--muted); margin-top:1.25rem; }
+.auth-link a { color:var(--accent); font-weight:600; }
+.auth-error { background:rgba(239,68,68,.08); border:1px solid rgba(239,68,68,.3); border-radius:8px; padding:.65rem .9rem; font-size:.82rem; color:var(--danger); margin-bottom:1.1rem; }
+.auth-hint { font-size:.7rem; color:var(--muted); margin-top:.25rem; }
+.strength-bar { height:3px; border-radius:2px; margin-top:.35rem; background:var(--border); overflow:hidden; }
+.strength-fill { height:100%; border-radius:2px; transition:width .3s, background .3s; width:0%; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-card">
+
+    <div class="auth-logo">
+      <span class="auth-logo-icon">🍺</span>
+      <div class="auth-logo-title">BEER GAME</div>
+      <div class="auth-logo-sub">Créer un compte joueur</div>
+    </div>
+
+    {% if messages %}
+      {% for message in messages %}
+      <div class="auth-error">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+
+    <form method="POST">
+      {% csrf_token %}
+
+      <div class="auth-row">
+        <div class="auth-field">
+          <label class="auth-label" for="first_name">Prénom</label>
+          <input class="auth-input" type="text" id="first_name" name="first_name"
+                 placeholder="Alice" value="{{ request.POST.first_name|default:'' }}" />
+        </div>
+        <div class="auth-field">
+          <label class="auth-label" for="username">Identifiant</label>
+          <input class="auth-input" type="text" id="username" name="username"
+                 placeholder="alice42" autocomplete="username" autofocus
+                 value="{{ request.POST.username|default:'' }}" />
+        </div>
+      </div>
+
+      <div class="auth-field">
+        <label class="auth-label" for="email">Email <span style="color:var(--muted);font-weight:400;">(optionnel)</span></label>
+        <input class="auth-input" type="email" id="email" name="email"
+               placeholder="alice@exemple.com" value="{{ request.POST.email|default:'' }}" />
+      </div>
+
+      <div class="auth-field">
+        <label class="auth-label" for="password1">Mot de passe</label>
+        <input class="auth-input" type="password" id="password1" name="password1"
+               placeholder="8 caractères minimum" autocomplete="new-password"
+               oninput="checkStrength(this.value)" />
+        <div class="strength-bar"><div class="strength-fill" id="strength-fill"></div></div>
+        <div class="auth-hint" id="strength-label"></div>
+      </div>
+
+      <div class="auth-field">
+        <label class="auth-label" for="password2">Confirmer le mot de passe</label>
+        <input class="auth-input" type="password" id="password2" name="password2"
+               placeholder="Répétez le mot de passe" autocomplete="new-password" />
+      </div>
+
+      <button type="submit" class="btn btn-primary auth-btn">
+        Créer mon compte →
+      </button>
+    </form>
+
+    <div class="auth-link">
+      Déjà inscrit ? <a href="{% url 'login' %}">Se connecter</a>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function checkStrength(pw) {
+  const fill  = document.getElementById('strength-fill');
+  const label = document.getElementById('strength-label');
+  if (!pw) { fill.style.width='0%'; label.textContent=''; return; }
+  let score = 0;
+  if (pw.length >= 8)  score++;
+  if (pw.length >= 12) score++;
+  if (/[A-Z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  const levels = [
+    {w:'15%',  c:'var(--danger)',  t:'Très faible'},
+    {w:'30%',  c:'var(--danger)',  t:'Faible'},
+    {w:'55%',  c:'var(--accent)',  t:'Moyen'},
+    {w:'80%',  c:'var(--accent)',  t:'Bon'},
+    {w:'100%', c:'var(--success)', t:'Excellent'},
+  ];
+  const lv = levels[Math.min(score, 4)];
+  fill.style.width      = lv.w;
+  fill.style.background = lv.c;
+  label.textContent     = lv.t;
+  label.style.color     = lv.c;
+}
+</script>
+{% endblock %}

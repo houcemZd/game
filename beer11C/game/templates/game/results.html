@@ -1,0 +1,466 @@
+{% extends "game/base.html" %}
+{% load game_extras %}
+{% block title %}Results — {{ session.name }}{% endblock %}
+
+{% block extra_head %}
+<style>
+/* ── KPI grid ─────────────────────────────────────────────────────────────── */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+.kpi-box {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.4rem 1.25rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  transition: border-color .2s, box-shadow .2s;
+}
+.kpi-box::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--kpi-cl, var(--border));
+  transition: opacity .2s;
+}
+.kpi-box.winner {
+  border-color: rgba(245,200,66,.4);
+  box-shadow: 0 0 0 1px rgba(245,200,66,.15), 0 8px 32px rgba(245,200,66,.1);
+  background: rgba(245,200,66,.04);
+}
+.kpi-winner-badge {
+  position: absolute; top: 0; right: 0;
+  font-size: .58rem; font-weight: 800;
+  background: var(--accent); color: #0a0c11;
+  padding: .22rem .6rem;
+  border-radius: 0 14px 0 8px;
+  letter-spacing: .06em; text-transform: uppercase;
+}
+.kpi-label { font-size: .68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; margin-bottom: .5rem; }
+.kpi-value { font-family: var(--font-mono); font-size: 2.1rem; font-weight: 700; margin: .2rem 0; line-height: 1.1; }
+.kpi-sub   { font-size: .72rem; color: var(--muted); }
+
+/* ── Result card ──────────────────────────────────────────────────────────── */
+.result-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+.chart-wrap { position: relative; height: 280px; margin-top: .5rem; }
+.charts-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+@media (max-width: 700px) { .charts-grid-2 { grid-template-columns: 1fr; } }
+
+/* ── Bullwhip bars ────────────────────────────────────────────────────────── */
+.bullwhip-bar-row { display: flex; align-items: center; gap: 1rem; margin-bottom: .85rem; }
+.bullwhip-bar-label { width: 100px; font-size: .8rem; text-align: right; color: var(--muted); flex-shrink: 0; }
+.bullwhip-bar-track { flex: 1; height: 22px; background: var(--surface2); border-radius: 6px; overflow: hidden; position: relative; border: 1px solid var(--border); }
+.bullwhip-bar-fill  { height: 100%; border-radius: 6px; transition: width 1.2s cubic-bezier(.4,0,.2,1); }
+.bullwhip-bar-marker { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(255,255,255,.25); }
+.bullwhip-bar-val   { width: 50px; font-family: var(--font-mono); font-size: .8rem; color: var(--text); flex-shrink: 0; }
+
+/* ── Analytics table ──────────────────────────────────────────────────────── */
+.analytics-table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+.analytics-table th, .analytics-table td { padding: .55rem .75rem; text-align: right; border-bottom: 1px solid var(--border); }
+.analytics-table th { font-size: .65rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); font-weight: 700; text-align: right; }
+.analytics-table th:first-child, .analytics-table td:first-child { text-align: left; }
+.analytics-table tr:last-child td { border-bottom: none; }
+.analytics-table tr:hover td { background: var(--surface2); }
+.srv-bar { display: inline-flex; align-items: center; gap: .45rem; }
+.srv-bar-track { width: 60px; height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; border: 1px solid var(--border); }
+.srv-bar-fill { height: 100%; border-radius: 4px; }
+
+/* ── Cost decomposition bars ─────────────────────────────────────────────── */
+.cost-decomp-row { display: flex; align-items: center; gap: .85rem; margin-bottom: .75rem; }
+.cost-decomp-label { width: 92px; font-size: .78rem; text-align: right; color: var(--muted); flex-shrink: 0; }
+.cost-decomp-track { flex: 1; height: 22px; background: var(--surface2); border-radius: 6px; overflow: hidden; display: flex; border: 1px solid var(--border); }
+.cost-decomp-hold { background: rgba(59,130,246,.7); height: 100%; transition: width .9s ease; }
+.cost-decomp-bl   { background: rgba(239,68,68,.7);  height: 100%; transition: width .9s ease; }
+.cost-decomp-vals { display: flex; gap: .35rem; font-family: var(--font-mono); font-size: .72rem; flex-shrink: 0; }
+.cost-decomp-hold-val { color: #60a5fa; }
+.cost-decomp-bl-val   { color: #f87171; }
+
+/* ── Diagnosis card ──────────────────────────────────────────────────────── */
+.diag-card { background: rgba(245,200,66,.05); border: 1px solid rgba(245,200,66,.2); border-radius: var(--radius); padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; }
+.diag-item { display: flex; gap: .75rem; align-items: flex-start; margin-bottom: .75rem; font-size: .83rem; line-height: 1.55; color: var(--text); }
+.diag-item:last-child { margin-bottom: 0; }
+.diag-icon { flex-shrink: 0; margin-top: .1rem; }
+
+/* ── Page header ──────────────────────────────────────────────────────────── */
+.results-header {
+  display: flex; align-items: flex-start; gap: 1rem;
+  margin-bottom: 2rem; flex-wrap: wrap;
+}
+.results-header-main { flex: 1; min-width: 0; }
+.results-header h2 {
+  font-family: var(--font-mono);
+  font-size: 1.5rem; margin-bottom: .3rem;
+}
+.results-header p { color: var(--muted); font-size: .85rem; }
+
+/* ── Podium ───────────────────────────────────────────────────────────────── */
+.podium {
+  display: flex; align-items: flex-end; justify-content: center;
+  gap: .75rem; margin-bottom: 2rem;
+}
+.podium-slot {
+  display: flex; flex-direction: column; align-items: center; gap: .35rem;
+  flex: 0 0 100px;
+}
+.podium-bar {
+  width: 100%; border-radius: 8px 8px 0 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: .85rem; font-weight: 800;
+  color: var(--text); padding-top: .5rem;
+  transition: height .8s cubic-bezier(.4,0,.2,1);
+}
+.podium-rank { font-family: var(--font-mono); font-size: .7rem; color: var(--muted); }
+.podium-role { font-size: .72rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Page header -->
+<div class="results-header fade-up">
+  <div class="results-header-main">
+    <h2 style="display:inline-flex;align-items:center;gap:.5rem;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;"><path d="M8 21h8M12 17v4" stroke="#f5c842" stroke-width="2" stroke-linecap="round"/><path d="M5 3h14l-2 9a5 5 0 01-10 0L5 3z" fill="#f5c842" opacity="0.85" stroke="#f5c842" stroke-width="1.5"/><path d="M5 3H3a2 2 0 000 4h2M19 3h2a2 2 0 010 4h-2" stroke="#f5c842" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.55"/></svg> Results — <span style="color:var(--accent)">{{ session.name }}</span></h2>
+    <p>{{ session.max_weeks }} weeks completed · Final scoreboard</p>
+  </div>
+  <div style="display:flex; gap:.6rem; flex-shrink:0; align-items:flex-start; flex-wrap:wrap;">
+    <a href="{% url 'dashboard' session.id %}" class="btn btn-ghost btn-sm">← Dashboard</a>
+    <a href="{% url 'home' %}" class="btn btn-ghost btn-sm">Sessions</a>
+    <a href="{% url 'export_csv' session.id %}" class="btn btn-ghost btn-sm">⬇ CSV Export</a>
+    <a href="{% url 'new_game' %}" class="btn btn-primary btn-sm">Play Again</a>
+  </div>
+</div>
+
+<!-- KPI cards -->
+<div class="kpi-grid fade-up-delay">
+  {% for player in players %}
+  <div class="kpi-box {% if player.role == winner_role %}winner{% endif %}"
+       style="--kpi-cl:var(--{{ player.role }}-color);">
+    {% if player.role == winner_role %}
+      <div class="kpi-winner-badge"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><path d="M5 3h14l-2 9a5 5 0 01-10 0L5 3z" fill="currentColor" opacity="0.85"/><path d="M5 3H3a2 2 0 000 4h2M19 3h2a2 2 0 010 4h-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.6"/><path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> Winner</div>
+    {% endif %}
+    <div class="kpi-label"><span class="role-badge role-{{ player.role }}">{{ player.role }}</span></div>
+    <div class="kpi-value" style="color:var(--{{ player.role }}-color);">
+      ${{ player.total_cost|floatformat:0 }}
+    </div>
+    <div class="kpi-sub">total cost</div>
+  </div>
+  {% endfor %}
+
+  <div class="kpi-box" style="--kpi-cl:var(--accent); border-color:rgba(245,200,66,.3);">
+    <div class="kpi-label">Chain Total</div>
+    <div class="kpi-value" style="color:var(--accent);">${{ total_cost|floatformat:0 }}</div>
+    <div class="kpi-sub">sum across all roles</div>
+  </div>
+</div>
+
+<!-- Podium — lowest cost = winner = tallest bar -->
+<div class="result-card" style="text-align:center; margin-bottom:1.5rem;">
+  <div class="card-title" style="text-align:left;">Scoreboard Podium — Lowest Cost Wins</div>
+  <div class="podium" id="podium-viz">
+    <!-- built by JS below -->
+  </div>
+  <div style="font-size:.68rem; color:var(--muted);">Lower cost = better performance. The winner is the role with the lowest total cost.</div>
+</div>
+<script>
+(function(){
+  const players = [{% for p in players %}{"role":"{{ p.role }}","cost":{{ p.total_cost|floatformat:0 }}}{% if not forloop.last %},{% endif %}{% endfor %}];
+  const COLORS  = {retailer:'#f5c842',wholesaler:'#3b82f6',distributor:'#a855f7',factory:'#22c55e'};
+  // Sort ascending by cost (lowest = rank 1 = winner)
+  const sorted = [...players].sort((a,b)=>a.cost-b.cost);
+  const maxCost = Math.max(...players.map(p=>p.cost));
+  const minCost = Math.min(...players.map(p=>p.cost));
+
+  // Rearrange: 2nd, 1st, 3rd, 4th for podium visual effect
+  const podiumOrder = [1, 0, 2, 3];
+  const container = document.getElementById('podium-viz');
+  if (!container) return;
+
+  podiumOrder.forEach(idx => {
+    const p = sorted[idx];
+    if (!p) return;
+    const rank = idx + 1;
+    const color = COLORS[p.role] || '#64748b';
+    // Bar height: winner = 120px, scaled down for others
+    const pct = maxCost > 0 ? 1 - ((p.cost - minCost) / (maxCost - minCost + 1)) : 1;
+    const barH = Math.max(40, Math.round(40 + pct * 100));
+
+    const slot = document.createElement('div');
+    slot.className = 'podium-slot';
+    slot.innerHTML = `
+      <div class="podium-rank">#${rank}</div>
+      <div class="podium-role"><span class="role-badge role-${p.role}">${p.role}</span></div>
+      <div style="font-family:var(--font-mono); font-size:.78rem; color:var(--muted); margin-bottom:.2rem;">$${p.cost.toLocaleString()}</div>
+      <div class="podium-bar" style="height:${barH}px; background:${color}22; border:1.5px solid ${color}55; ${rank===1?'border-color:'+color+';box-shadow:0 0 18px '+color+'44;':''}">
+        ${rank===1?`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="color:${color}"><path d="M5 3h14l-2 9a5 5 0 01-10 0L5 3z" fill="currentColor" opacity="0.85"/><path d="M5 3H3a2 2 0 000 4h2M19 3h2a2 2 0 010 4h-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.6"/><path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`:''}
+      </div>`;
+    container.appendChild(slot);
+  });
+})();
+</script>
+
+<!-- Bullwhip Effect -->
+{% if bullwhip %}
+<div class="result-card">
+  <div class="card-title"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg> Bullwhip Effect Index (σ_orders / σ_demand)</div>
+  <p style="color:var(--muted); font-size:.8rem; margin-bottom:1.25rem; line-height:1.55;">
+    A ratio &gt; 1 means the role <em>amplifies</em> demand variability — the classic bullwhip.
+    Ratio = 1 is perfect demand matching.
+  </p>
+  {% for role, ratio in bullwhip.items %}
+  <div class="bullwhip-bar-row">
+    <div class="bullwhip-bar-label">
+      <span class="role-badge role-{{ role }}">{{ role }}</span>
+    </div>
+    <div class="bullwhip-bar-track">
+      <div class="bullwhip-bar-fill"
+           style="width:{% widthratio ratio bullwhip_max 100 %}%; max-width:100%;
+                  background:{% if ratio < 1.5 %}var(--success){% elif ratio < 3 %}var(--accent){% else %}var(--danger){% endif %};">
+      </div>
+      {% if bullwhip_max >= 1 %}
+      <div class="bullwhip-bar-marker" style="left:{% widthratio 1 bullwhip_max 100 %}%;"></div>
+      {% endif %}
+    </div>
+    <div class="bullwhip-bar-val">{{ ratio }}×</div>
+  </div>
+  {% endfor %}
+  <div style="font-size:.65rem; color:var(--muted); margin-top:.75rem;">
+    ▏ = ratio 1.0 baseline (perfect match) &nbsp;·&nbsp; Scale: 0 → {{ bullwhip_max }}×
+  </div>
+</div>
+{% endif %}
+
+<!-- Inventory history chart -->
+<div class="result-card">
+  <div class="card-title"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="2" fill="none"/><path d="M3 9h18" stroke="currentColor" stroke-width="2" opacity="0.4"/><rect x="7" y="12" width="4" height="4" rx="1" fill="currentColor" opacity="0.5"/></svg> Inventory History — All Roles</div>
+  <div class="chart-wrap"><canvas id="inventoryChart"></canvas></div>
+</div>
+
+<!-- Orders + Backlog -->
+<div class="charts-grid-2">
+  <div class="result-card" style="margin-bottom:0;">
+    <div class="card-title"><svg width="12" height="12" viewBox="0 0 14 18" fill="none" style="vertical-align:middle;"><path d="M2 0h7l5 5v11a2 2 0 01-2 2H2a2 2 0 01-2-2V2a2 2 0 012-2z" fill="currentColor" opacity="0.5"/><path d="M9 0l5 5h-3a2 2 0 01-2-2V0z" fill="currentColor" opacity="0.3"/></svg> Orders Placed — Bullwhip Amplification</div>
+    <div class="chart-wrap"><canvas id="ordersChart"></canvas></div>
+  </div>
+  <div class="result-card" style="margin-bottom:0;">
+    <div class="card-title"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" stroke-width="2" fill="none" opacity="0.75"/><line x1="12" y1="9" x2="12" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="12" y1="17" x2="12.01" y2="17" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg> Backlog Over Time</div>
+    <div class="chart-wrap"><canvas id="backlogChart"></canvas></div>
+  </div>
+</div>
+
+<!-- Cumulative cost -->
+<div class="result-card" style="margin-top:1.5rem;">
+  <div class="card-title"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><line x1="12" y1="1" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg> Cumulative Cost Comparison</div>
+  <div class="chart-wrap"><canvas id="costChart"></canvas></div>
+</div>
+
+<!-- ── Debrief: Guided Bullwhip Interpretation ─────────────────────────── -->
+{% if analytics.bullwhip_diagnosis %}
+<div class="diag-card">
+  <div style="font-family:var(--font-mono); font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:var(--accent); margin-bottom:1rem;">
+    💡 Debrief — What happened in this run?
+  </div>
+  {% for line in analytics.bullwhip_diagnosis %}
+  <div class="diag-item">
+    <span class="diag-icon" style="color:var(--accent);">›</span>
+    <span>{{ line }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ── Service Level & Cost Decomposition ────────────────────────────────── -->
+{% if analytics.roles %}
+<div class="charts-grid-2" style="margin-bottom:1.5rem;">
+
+  <!-- Service Level -->
+  <div class="result-card" style="margin-bottom:0;">
+    <div class="card-title">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;">
+        <path d="M22 11.08V12a10 10 0 11-5.93-9.14" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
+        <polyline points="22 4 12 14.01 9 11.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+      Service Level — % Weeks Without Stockout
+    </div>
+    <p style="color:var(--muted); font-size:.78rem; margin-bottom:1rem; line-height:1.5;">
+      Weeks where backlog = 0. 100% means perfect fill rate; lower values indicate missed demand.
+    </p>
+    {% for player in players %}
+    {% with rd=analytics.roles|get_item:player.role %}
+    {% if rd %}
+    <div class="cost-decomp-row">
+      <div class="cost-decomp-label"><span class="role-badge role-{{ player.role }}">{{ player.role }}</span></div>
+      <div class="cost-decomp-track">
+        <div class="cost-decomp-hold"
+             style="width:{{ rd.service_level }}%; background:{% if rd.service_level >= 90 %}var(--success){% elif rd.service_level >= 70 %}#f59e0b{% else %}var(--danger){% endif %};">
+        </div>
+      </div>
+      <div style="font-family:var(--font-mono); font-size:.78rem; width:46px; flex-shrink:0;">
+        {{ rd.service_level }}%
+      </div>
+    </div>
+    {% endif %}
+    {% endwith %}
+    {% endfor %}
+    <div style="font-size:.68rem; color:var(--muted); margin-top:.5rem;">
+      Chain average: <strong style="color:var(--text);">{{ analytics.chain_service_level }}%</strong>
+    </div>
+  </div>
+
+  <!-- Cost Decomposition -->
+  <div class="result-card" style="margin-bottom:0;">
+    <div class="card-title">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;">
+        <path d="M12 2v20M2 12h20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      Cost Decomposition — Holding vs. Backlog
+    </div>
+    <p style="color:var(--muted); font-size:.78rem; margin-bottom:1rem; line-height:1.5;">
+      <span style="color:#60a5fa;">■ Holding</span> &nbsp; <span style="color:#f87171;">■ Backlog/stockout</span>
+    </p>
+    {% for player in players %}
+    {% with rd=analytics.roles|get_item:player.role %}
+    {% if rd %}
+    <div class="cost-decomp-row">
+      <div class="cost-decomp-label"><span class="role-badge role-{{ player.role }}">{{ player.role }}</span></div>
+      {% with total=rd.holding_cost_total|add:rd.backlog_cost_total %}
+      <div class="cost-decomp-track">
+        {% if total > 0 %}
+        <div class="cost-decomp-hold"
+             style="width:{% widthratio rd.holding_cost_total total 100 %}%;"></div>
+        <div class="cost-decomp-bl"
+             style="width:{% widthratio rd.backlog_cost_total total 100 %}%;"></div>
+        {% endif %}
+      </div>
+      {% endwith %}
+      <div class="cost-decomp-vals">
+        <span class="cost-decomp-hold-val">${{ rd.holding_cost_total|floatformat:0 }}</span>
+        <span style="color:var(--muted);">/</span>
+        <span class="cost-decomp-bl-val">${{ rd.backlog_cost_total|floatformat:0 }}</span>
+      </div>
+    </div>
+    {% endif %}
+    {% endwith %}
+    {% endfor %}
+    <div style="font-size:.68rem; color:var(--muted); margin-top:.5rem;">
+      Chain holding: <strong style="color:#60a5fa;">${{ analytics.total_holding_cost|floatformat:0 }}</strong> &nbsp;
+      Chain backlog: <strong style="color:#f87171;">${{ analytics.total_backlog_cost|floatformat:0 }}</strong>
+    </div>
+  </div>
+</div>
+
+<!-- ── Per-Role Analytics Table ──────────────────────────────────────────── -->
+<div class="result-card" style="margin-bottom:1.5rem; overflow-x:auto;">
+  <div class="card-title">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;">
+      <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2" fill="none"/>
+      <path d="M3 9h18M3 15h18M9 3v18" stroke="currentColor" stroke-width="2"/>
+    </svg>
+    Advanced Analytics — Per Role
+  </div>
+  <table class="analytics-table">
+    <thead>
+      <tr>
+        <th>Role</th>
+        <th>Avg. Order</th>
+        <th>Order Variance</th>
+        <th>Avg. Inventory</th>
+        <th>Peak Backlog</th>
+        <th>Backlog Weeks</th>
+        <th>Demand Match</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for player in players %}
+      {% with rd=analytics.roles|get_item:player.role %}
+      {% if rd %}
+      <tr>
+        <td><span class="role-badge role-{{ player.role }}">{{ player.role }}</span></td>
+        <td>{{ rd.avg_order }}</td>
+        <td>{{ rd.order_variance }}</td>
+        <td>{{ rd.avg_inventory }}</td>
+        <td style="color:{% if rd.max_backlog > 0 %}#f87171{% else %}var(--text){% endif %};">
+          {{ rd.max_backlog }}
+        </td>
+        <td>{{ rd.weeks_with_backlog }}</td>
+        <td style="color:{% if rd.demand_match > 1.2 or rd.demand_match < 0.8 %}#f59e0b{% else %}var(--success){% endif %};">
+          {{ rd.demand_match }}×
+        </td>
+      </tr>
+      {% endif %}
+      {% endwith %}
+      {% endfor %}
+    </tbody>
+  </table>
+  <div style="font-size:.68rem; color:var(--muted); margin-top:.75rem; line-height:1.6;">
+    <strong>Demand Match</strong>: avg order / avg customer demand (1.0 = perfectly matched averages).
+    <strong>Order Variance</strong>: higher values = more erratic ordering = bullwhip amplification.
+    Demand avg: <strong style="color:var(--text);">{{ analytics.demand_avg }}</strong> units/week
+    {% if analytics.demand_std > 0 %} · Demand σ: <strong style="color:var(--text);">{{ analytics.demand_std }}</strong>{% endif %}.
+  </div>
+</div>
+{% endif %}
+
+<!-- Bottom actions -->
+<div style="display:flex; gap:1rem; justify-content:center; margin:2rem 0 3rem;">
+  <a href="{% url 'new_game' %}" class="btn btn-primary" style="padding:.65rem 1.5rem;">Play Again</a>
+  <a href="{% url 'home' %}" class="btn btn-ghost">← All Sessions</a>
+</div>
+
+<script>
+const RAW = {{ chart_data|safe }};
+const COLORS = {
+  retailer: '#f5c842', wholesaler: '#3b82f6',
+  distributor: '#a855f7', factory: '#22c55e',
+};
+const CHART_OPTIONS = {
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: { duration: 800, easing: 'easeInOutQuart' },
+  plugins: {
+    legend: { labels: { color: '#94a3b8', font: { size: 11 }, boxWidth: 12, padding: 14 } },
+    tooltip: {
+      backgroundColor: '#1a1e2a', borderColor: '#252b3b', borderWidth: 1,
+      titleColor: '#eceef5', bodyColor: '#94a3b8', padding: 10,
+    }
+  },
+  scales: {
+    x: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: '#252b3b' } },
+    y: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: '#252b3b' } },
+  }
+};
+
+function labels() { return RAW['retailer']?.history.map(h => `W${h.week}`) || []; }
+
+function makeChart(id, field, fill = false) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels(),
+      datasets: Object.entries(COLORS).map(([role, color]) => ({
+        label: role.charAt(0).toUpperCase() + role.slice(1),
+        data: RAW[role]?.history.map(h => h[field]) || [],
+        borderColor: color,
+        backgroundColor: fill ? color + '18' : 'transparent',
+        fill, tension: 0.35,
+        pointRadius: 3, pointHoverRadius: 5,
+        pointBackgroundColor: color,
+        borderWidth: 2,
+      }))
+    },
+    options: CHART_OPTIONS,
+  });
+}
+
+makeChart('inventoryChart', 'inventory', true);
+makeChart('ordersChart',    'order_placed');
+makeChart('backlogChart',   'backlog');
+makeChart('costChart',      'cumulative_cost');
+</script>
+{% endblock %}

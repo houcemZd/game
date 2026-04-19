@@ -1,0 +1,176 @@
+{% extends "game/base.html" %}
+{% block title %}Customer — {{ session.name }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .bar-chart { display:flex; align-items:flex-end; gap:3px; height:90px; margin-top:.75rem; }
+  .bar-col   { display:flex; flex-direction:column; align-items:center; flex:1; }
+  .bar-fill  {
+    background: linear-gradient(180deg, var(--accent), rgba(245,200,66,.6));
+    border-radius:4px 4px 0 0; width:100%; min-height:2px;
+    transition: height .4s ease;
+  }
+  .bar-label { font-family:var(--font-mono); font-size:.55rem; color:var(--muted); margin-top:2px; }
+  .chart-wrap { position:relative; height:200px; }
+  .stat-big { font-family:var(--font-mono); font-size:2.2rem; font-weight:700; line-height:1.1; }
+
+  /* Customer hero */
+  .cv-header {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+    gap: 1rem; margin-bottom: 1.5rem;
+    padding: 1.25rem 1.5rem;
+    background: rgba(245,200,66,.05);
+    border: 1px solid rgba(245,200,66,.2);
+    border-radius: 16px;
+    animation: fadeUp .35s ease both;
+  }
+  .cv-header-left { display: flex; align-items: center; gap: 1rem; }
+  .cv-header-icon {
+    font-size: 2.8rem;
+    filter: drop-shadow(0 0 12px rgba(245,200,66,.4));
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Header -->
+<div class="cv-header">
+  <div class="cv-header-left">
+    <span class="cv-header-icon">👤</span>
+    <div>
+      <h2 style="font-family:var(--font-mono); font-size:1.25rem; margin-bottom:.2rem;">Customer View</h2>
+      <div style="font-size:.8rem; color:var(--muted);">{{ session.name }} &nbsp;·&nbsp; Week {{ session.current_week }}/{{ session.max_weeks }}</div>
+    </div>
+  </div>
+  <div style="display:flex; gap:.5rem; flex-wrap:wrap;">
+    <a href="{% url 'dashboard' session.id %}" class="btn btn-ghost btn-sm">← Dashboard</a>
+    {% if session.is_finished %}
+    <a href="{% url 'results' session.id %}" class="btn btn-primary btn-sm">📊 Results</a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Progress bar -->
+<div style="margin-bottom:1.5rem;">
+  <div class="progress-bar">
+    <div class="progress-fill" style="width:{% widthratio session.current_week session.max_weeks 100 %}%"></div>
+  </div>
+  <div style="display:flex; justify-content:space-between; font-size:.65rem; color:var(--muted); margin-top:.25rem; font-family:var(--font-mono);">
+    <span>Week 0</span><span>Week {{ session.max_weeks }}</span>
+  </div>
+</div>
+
+<!-- Info box -->
+<div style="background:rgba(245,200,66,.05); border:1px solid rgba(245,200,66,.18); border-radius:12px; padding:.9rem 1.1rem; margin-bottom:1.5rem; font-size:.82rem; color:var(--muted); line-height:1.55;">
+  💡 <strong style="color:var(--text);">Single-player:</strong>
+  Customer demand is entered each week on the dashboard.
+  This page shows the demand history and the retailer's response to it.
+</div>
+
+<!-- Stats -->
+<div class="grid-4" style="margin-bottom:1.5rem;">
+  <div class="card" style="text-align:center; border-color:{% if retailer_inv > 6 %}rgba(34,197,94,.3){% elif retailer_inv > 0 %}rgba(245,200,66,.3){% else %}rgba(239,68,68,.3){% endif %};">
+    <div class="card-title">Retailer Inventory</div>
+    <div class="stat-big" style="color:{% if retailer_inv > 6 %}var(--success){% elif retailer_inv > 0 %}var(--accent){% else %}var(--danger){% endif %};">
+      {{ retailer_inv }}
+    </div>
+    <div style="font-size:.7rem; color:var(--muted); margin-top:.25rem;">units on hand</div>
+  </div>
+  <div class="card" style="text-align:center; border-color:{% if retailer_backlog == 0 %}rgba(34,197,94,.3){% else %}rgba(239,68,68,.3){% endif %};">
+    <div class="card-title">Retailer Backlog</div>
+    <div class="stat-big" style="color:{% if retailer_backlog == 0 %}var(--success){% else %}var(--danger){% endif %};">
+      {{ retailer_backlog }}
+    </div>
+    <div style="font-size:.7rem; color:var(--muted);">unfilled units</div>
+  </div>
+  <div class="card" style="text-align:center;">
+    <div class="card-title">Total Demanded</div>
+    <div class="stat-big" style="color:var(--accent);">{{ total_demand }}</div>
+    <div style="font-size:.7rem; color:var(--muted);">over {{ session.current_week }} weeks</div>
+  </div>
+  <div class="card" style="text-align:center;">
+    <div class="card-title">Avg / Week</div>
+    <div class="stat-big" style="color:var(--accent);">{{ avg_demand }}</div>
+    <div style="font-size:.7rem; color:var(--muted);">units/week</div>
+  </div>
+</div>
+
+{% if demand_history %}
+<!-- Bar chart -->
+<div class="card" style="margin-bottom:1.5rem;">
+  <div class="card-title">Demand per Week</div>
+  <div class="bar-chart">
+    {% for d in demand_history %}
+    <div class="bar-col">
+      <div class="bar-fill" style="height:{{ d.quantity|add:2 }}px;" title="W{{ d.week }}: {{ d.quantity }}"></div>
+      <div class="bar-label">W{{ d.week }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Line chart -->
+<div class="card" style="margin-bottom:1.5rem;">
+  <div class="card-title">Demand vs Retailer Inventory</div>
+  <div class="chart-wrap"><canvas id="demandChart"></canvas></div>
+</div>
+
+<!-- Table -->
+<div class="card" style="margin-bottom:1.5rem; overflow-x:auto;">
+  <div class="card-title">Weekly Demand Log</div>
+  <table style="width:100%; border-collapse:collapse; font-family:var(--font-mono); font-size:.8rem;">
+    <thead>
+      <tr style="border-bottom:1px solid var(--border);">
+        <th style="text-align:left; padding:.3rem .5rem; color:var(--muted);">Week</th>
+        <th style="text-align:right; padding:.3rem .5rem; color:var(--muted);">Demand</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in demand_history %}
+      <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+        <td style="padding:.3rem .5rem; color:var(--muted);">Week {{ d.week }}</td>
+        <td style="padding:.3rem .5rem; text-align:right; color:var(--accent);">{{ d.quantity }} units</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div style="text-align:center; color:var(--muted); padding:2rem;">
+  No demand history yet. Play some weeks first.
+</div>
+{% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const demandData   = {{ demand_history_json|safe }};
+  const retailerData = {{ retailer_history_json|safe }};
+  const ctx = document.getElementById('demandChart');
+  if(!ctx || !demandData.length) return;
+  new Chart(ctx, {
+    type:'line',
+    data:{
+      labels: demandData.map(d=>'W'+d.week),
+      datasets:[
+        {label:'Customer Demand', data:demandData.map(d=>d.qty),
+          borderColor:'#f5c842', backgroundColor:'rgba(245,200,66,.15)',
+          fill:true, tension:.3, pointRadius:4, borderWidth:2},
+        {label:'Retailer Inventory', data:retailerData.map(d=>d.inventory),
+          borderColor:'#22c55e', backgroundColor:'transparent',
+          tension:.3, pointRadius:3, borderWidth:1.5, borderDash:[4,4]},
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#9ca3af',font:{size:11}}}},
+      scales:{
+        x:{ticks:{color:'#6b7280',font:{size:10}},grid:{color:'#2a2f3d'}},
+        y:{ticks:{color:'#6b7280',font:{size:10}},grid:{color:'#2a2f3d'},beginAtZero:true},
+      }
+    }
+  });
+});
+</script>
+
+{% endblock %}

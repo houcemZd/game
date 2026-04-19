@@ -1,0 +1,363 @@
+{% extends "game/base.html" %}
+{% block title %}{{ role|title }} View — {{ session.name }}{% endblock %}
+
+{% block extra_head %}
+<style>
+/* ── Role accent ──────────────────────────────────────────────────────────── */
+:root {
+  --role-color: {% if role == 'retailer' %}#f5c842{% elif role == 'wholesaler' %}#3b82f6{% elif role == 'distributor' %}#a855f7{% else %}#22c55e{% endif %};
+  --role-bg: {% if role == 'retailer' %}rgba(245,200,66,.06){% elif role == 'wholesaler' %}rgba(59,130,246,.06){% elif role == 'distributor' %}rgba(168,85,247,.06){% else %}rgba(34,197,94,.06){% endif %};
+}
+
+/* ── Hero header ─────────────────────────────────────────────────────────── */
+.cv-hero {
+  display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap;
+  gap:1rem; margin-bottom:1.5rem;
+  background:var(--role-bg); border:1px solid rgba(0,0,0,0);
+  border-color: color-mix(in srgb, var(--role-color) 22%, transparent);
+  border-radius:16px; padding:1.25rem 1.5rem;
+  box-shadow:0 0 0 1px rgba(0,0,0,0.4), 0 8px 32px rgba(0,0,0,.2);
+  animation: fadeUp .35s ease both;
+}
+.cv-hero-left { display:flex; align-items:center; gap:1rem; }
+.cv-emoji { font-size:2.8rem; line-height:1; filter:drop-shadow(0 0 14px var(--role-color)); }
+.cv-name  { font-family:var(--font-mono); font-size:1.25rem; font-weight:700; color:var(--text); line-height:1.2; }
+.cv-meta  { font-size:0.78rem; color:var(--muted); margin-top:.2rem; }
+.cv-role-switch { display:flex; gap:.4rem; flex-wrap:wrap; align-items:center; }
+
+/* ── Week progress bar ───────────────────────────────────────────────────── */
+.cv-progress-wrap {
+  margin-bottom:1.5rem;
+}
+.cv-progress-label {
+  display:flex; justify-content:space-between; font-size:.72rem;
+  color:var(--muted); margin-bottom:.35rem; font-family:var(--font-mono);
+}
+.cv-progress-bar {
+  height:6px; background:var(--surface2); border-radius:999px; overflow:hidden;
+}
+.cv-progress-fill {
+  height:100%; border-radius:999px;
+  background:linear-gradient(90deg, var(--role-color), var(--role-color)88);
+  transition:width .5s ease;
+}
+
+/* ── KPI cards ───────────────────────────────────────────────────────────── */
+.cv-kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:.75rem; margin-bottom:1.5rem; }
+.cv-kpi {
+  background:var(--surface); border:1px solid var(--border); border-radius:12px;
+  padding:.85rem 1rem; text-align:center; position:relative; overflow:hidden;
+  transition:border-color .3s, box-shadow .3s;
+}
+.cv-kpi::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:2px;
+  background:var(--kpi-color, var(--border));
+}
+.cv-kpi-val { font-family:var(--font-mono); font-size:1.9rem; font-weight:800; line-height:1.1; color:var(--kpi-color,var(--text)); }
+.cv-kpi-lbl { font-size:.6rem; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); margin-top:.2rem; }
+.cv-kpi-sub { font-size:.65rem; color:var(--muted); margin-top:.1rem; }
+
+/* ── Pipeline section ─────────────────────────────────────────────────────── */
+.cv-section { margin-bottom:1.5rem; }
+.cv-section-title {
+  font-family:var(--font-mono); font-size:.68rem; text-transform:uppercase;
+  letter-spacing:.12em; color:var(--muted); margin-bottom:.75rem;
+  display:flex; align-items:center; gap:.5rem;
+}
+.cv-section-title::after {
+  content:''; flex:1; height:1px; background:var(--border);
+}
+
+/* Pipeline item row */
+.cv-pipe-item {
+  display:grid; grid-template-columns:2.5rem 1fr auto auto;
+  align-items:center; gap:.6rem;
+  background:var(--surface2); border:1px solid var(--border);
+  border-radius:10px; padding:.6rem .85rem; margin-bottom:.4rem;
+  transition:border-color .2s;
+}
+.cv-pipe-item.arriving {
+  border-color:var(--success); background:rgba(34,197,94,.06);
+}
+.cv-pipe-item.ship { border-left:3px solid var(--wholesaler-color); }
+.cv-pipe-item.order { border-left:3px solid var(--accent); }
+.cv-pipe-qty { font-family:var(--font-mono); font-size:1.25rem; font-weight:800; text-align:center; }
+.cv-pipe-qty.ship  { color:var(--wholesaler-color); }
+.cv-pipe-qty.order { color:var(--accent); }
+.cv-pipe-qty.arriving { color:var(--success); }
+.cv-pipe-desc { font-size:.78rem; color:var(--text); }
+.cv-pipe-sub  { font-size:.66rem; color:var(--muted); margin-top:.1rem; }
+.cv-pipe-week { font-family:var(--font-mono); font-size:.75rem; color:var(--muted); text-align:right; white-space:nowrap; }
+.cv-pipe-badge {
+  font-size:.62rem; font-weight:700; padding:.15rem .5rem; border-radius:999px;
+  white-space:nowrap;
+}
+.cv-pipe-badge.now  { background:rgba(34,197,94,.15); color:var(--success); border:1px solid rgba(34,197,94,.3); }
+.cv-pipe-badge.soon { background:rgba(245,200,66,.12); color:var(--accent); border:1px solid rgba(245,200,66,.25); }
+.cv-empty { color:var(--muted); font-size:.82rem; padding:.5rem 0; }
+
+/* Visual delay track */
+.cv-delay-track {
+  display:flex; align-items:stretch; gap:3px; margin-top:.6rem; margin-bottom:.25rem;
+}
+.cv-delay-slot {
+  flex:1; min-height:32px; border-radius:5px; border:1px solid var(--border);
+  background:var(--surface2); display:flex; align-items:center; justify-content:center;
+  font-family:var(--font-mono); font-size:.72rem; color:var(--muted);
+  transition:all .3s; position:relative;
+}
+.cv-delay-slot.active-ship { border-color:var(--wholesaler-color); background:rgba(59,130,246,.12); color:#8ecbff; }
+.cv-delay-slot.active-order { border-color:var(--accent); background:rgba(245,200,66,.1); color:#ffd36a; }
+.cv-delay-slot.arriving     { border-color:var(--success); background:rgba(34,197,94,.15); color:var(--success); animation:arr-pulse .9s ease infinite; }
+@keyframes arr-pulse { 0%,100%{opacity:1} 50%{opacity:.65} }
+.cv-delay-label { display:flex; justify-content:space-between; font-size:.58rem; color:var(--muted); padding:0 2px; }
+
+/* ── Chart ───────────────────────────────────────────────────────────────── */
+.cv-chart-wrap { position:relative; height:200px; margin-top:.5rem; }
+
+/* ── History table ───────────────────────────────────────────────────────── */
+.cv-table { width:100%; border-collapse:collapse; font-size:.78rem; font-family:var(--font-mono); }
+.cv-table thead tr { border-bottom:1px solid var(--border); }
+.cv-table th { padding:.35rem .6rem; color:var(--muted); font-size:.65rem; text-transform:uppercase; letter-spacing:.07em; font-weight:600; }
+.cv-table th:first-child { text-align:left; }
+.cv-table th:not(:first-child) { text-align:right; }
+.cv-table td { padding:.32rem .6rem; border-bottom:1px solid rgba(255,255,255,.03); }
+.cv-table td:first-child { color:var(--muted); }
+.cv-table td:not(:first-child) { text-align:right; }
+.cv-table tbody tr:hover { background:rgba(255,255,255,.025); }
+.cv-table tbody tr:last-child td { border-bottom:none; }
+
+/* ── Factory note ─────────────────────────────────────────────────────────── */
+.cv-factory-note {
+  background:rgba(34,197,94,.07); border:1px solid rgba(34,197,94,.2);
+  border-radius:10px; padding:.75rem 1rem; font-size:.82rem; color:var(--muted);
+}
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const H = {{ history|safe }};
+  const color = {
+    retailer:'#f5c842', wholesaler:'#3b82f6', distributor:'#a855f7', factory:'#22c55e'
+  }['{{ role }}'] || '#f5c842';
+
+  // Chart
+  const ctx = document.getElementById('myChart');
+  if(ctx && H.length){
+    new Chart(ctx, {
+      type:'line',
+      data:{
+        labels: H.map(h=>'W'+h.week),
+        datasets:[
+          {label:'Inventory', data:H.map(h=>h.inventory), borderColor:color, backgroundColor:color+'22', fill:true, tension:.35, pointRadius:3, pointHoverRadius:5},
+          {label:'Backlog',   data:H.map(h=>h.backlog),   borderColor:'#ef4444', backgroundColor:'transparent', tension:.35, pointRadius:3, pointHoverRadius:5},
+          {label:'{% if role == "factory" %}Produced{% else %}Ordered{% endif %}', data:H.map(h=>h.order_placed), borderColor:color+'88', backgroundColor:'transparent', tension:.2, pointRadius:2, borderDash:[4,4]},
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{
+          legend:{labels:{color:'#9ca3af', font:{size:11}, boxWidth:12}},
+          tooltip:{
+            backgroundColor:'#1e222d', borderColor:'#2a2f3d', borderWidth:1,
+            titleColor:'#e8eaf0', bodyColor:'#9ca3af', padding:10,
+          }
+        },
+        scales:{
+          x:{ticks:{color:'#6b7280',font:{size:10}}, grid:{color:'#2a2f3d22'}},
+          y:{ticks:{color:'#6b7280',font:{size:10}}, grid:{color:'#2a2f3d'}},
+        }
+      }
+    });
+  }
+
+  // History table
+  const tbody = document.getElementById('history-tbody');
+  H.forEach(h=>{
+    const inv_cls = h.inventory>6 ? 'color:var(--success)' : h.inventory>0 ? 'color:var(--accent)' : 'color:var(--danger)';
+    const blg_cls = h.backlog>0   ? 'color:var(--danger)'  : 'color:var(--success)';
+    tbody.innerHTML += `<tr>
+      <td>W${h.week}</td>
+      <td style="${inv_cls};font-weight:700;">${h.inventory}</td>
+      <td style="${blg_cls};font-weight:700;">${h.backlog}</td>
+      <td>${h.order_placed}</td>
+      <td>${h.shipment_received}</td>
+      <td style="color:var(--accent);">$${h.cost_this_week.toFixed(1)}</td>
+    </tr>`;
+  });
+});
+</script>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Hero header ───────────────────────────────────────────────────────── -->
+<div class="cv-hero">
+  <div class="cv-hero-left">
+    <div class="cv-emoji">{{ emoji }}</div>
+    <div>
+      <div class="cv-name">
+        {{ player.name }}
+        <span class="role-badge role-{{ role }}" style="margin-left:.5rem; font-size:.65rem;">{{ role }}</span>
+      </div>
+      <div class="cv-meta">{{ session.name }} &nbsp;·&nbsp; Week {{ session.current_week }} / {{ session.max_weeks }}</div>
+    </div>
+  </div>
+  <div class="cv-role-switch">
+    {% for r in roles %}
+    <a href="{% url 'client_view' session.id r %}"
+       class="btn btn-ghost btn-sm {% if r == role %}btn-primary{% endif %}"
+       style="font-size:.7rem; padding:.22rem .6rem;">
+      {% if r == 'retailer' %}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><path d="M3 10l1-6h16l1 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M3 10v10a2 2 0 002 2h14a2 2 0 002-2V10" stroke="currentColor" stroke-width="2" fill="none"/></svg>{% elif r == 'wholesaler' %}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><rect x="2" y="6" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><rect x="6" y="2" width="12" height="4" rx="1" fill="currentColor" opacity="0.5"/></svg>{% elif r == 'distributor' %}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><rect x="1" y="6" width="15" height="10" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M16 9h4l3 4v3h-7V9z" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="6.5" cy="17.5" r="2" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="19" cy="17.5" r="2" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>{% else %}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><path d="M2 20V10l5-4v4l5-4v4l5-4v10" stroke="currentColor" stroke-width="2" fill="none"/><rect x="2" y="16" width="20" height="6" rx="1" fill="currentColor" opacity="0.3"/></svg>{% endif %}
+      {{ r|slice:":4"|upper }}
+    </a>
+    {% endfor %}
+    <a href="{% url 'dashboard' session.id %}" class="btn btn-ghost btn-sm">← Dashboard</a>
+  </div>
+</div>
+
+<!-- ── Week progress ──────────────────────────────────────────────────────── -->
+<div class="cv-progress-wrap">
+  <div class="cv-progress-label">
+    <span>Game Progress</span>
+    <span>Week {{ session.current_week }} / {{ session.max_weeks }}</span>
+  </div>
+  <div class="cv-progress-bar">
+    <div class="cv-progress-fill" style="width:{% widthratio session.current_week session.max_weeks 100 %}%;"></div>
+  </div>
+</div>
+
+<!-- ── KPI cards ─────────────────────────────────────────────────────────── -->
+<div class="cv-kpi-row">
+  <div class="cv-kpi" style="--kpi-color:{% if player.inventory > 6 %}var(--success){% elif player.inventory > 0 %}var(--accent){% else %}var(--danger){% endif %};">
+    <div class="cv-kpi-val">{{ player.inventory }}</div>
+    <div class="cv-kpi-lbl">Inventory</div>
+    <div class="cv-kpi-sub">units on hand</div>
+  </div>
+  <div class="cv-kpi" style="--kpi-color:{% if player.backlog == 0 %}var(--success){% elif player.backlog < 5 %}var(--accent){% else %}var(--danger){% endif %};">
+    <div class="cv-kpi-val">{{ player.backlog }}</div>
+    <div class="cv-kpi-lbl">Backlog</div>
+    <div class="cv-kpi-sub">unfilled orders</div>
+  </div>
+  <div class="cv-kpi" style="--kpi-color:var(--accent);">
+    <div class="cv-kpi-val">${{ player.total_cost|floatformat:0 }}</div>
+    <div class="cv-kpi-lbl">Total Cost</div>
+    <div class="cv-kpi-sub">accumulated</div>
+  </div>
+  <div class="cv-kpi" style="--kpi-color:var(--role-color);">
+    <div class="cv-kpi-val">{{ player.history.last.order_placed|default:"—" }}</div>
+    <div class="cv-kpi-lbl">Last Order</div>
+    <div class="cv-kpi-sub">units placed</div>
+  </div>
+</div>
+
+<!-- ── Pipeline: incoming shipments ──────────────────────────────────────── -->
+<div class="cv-section">
+  <div class="cv-section-title">📦 Incoming Shipments — Ship Delay (2 weeks)</div>
+
+  <!-- Visual 2-slot delay track -->
+  <div class="cv-delay-track">
+    {% for s in incoming %}
+    <div class="cv-delay-slot {% if s.arrives_on_week <= session.current_week %}arriving{% else %}active-ship{% endif %}"
+         title="Arrives Week {{ s.arrives_on_week }}">
+      {{ s.quantity }}
+    </div>
+    {% empty %}
+    <div class="cv-delay-slot" style="flex:2;">—</div>
+    {% endfor %}
+  </div>
+  <div class="cv-delay-label">
+    <span>← Arriving sooner</span>
+    <span>Arriving later →</span>
+  </div>
+
+  {% if incoming %}
+  {% for s in incoming %}
+  <div class="cv-pipe-item ship {% if s.arrives_on_week <= session.current_week %}arriving{% endif %}">
+    <div class="cv-pipe-qty {% if s.arrives_on_week <= session.current_week %}arriving{% else %}ship{% endif %}">+{{ s.quantity }}</div>
+    <div>
+      <div class="cv-pipe-desc">📦 Shipment arriving</div>
+      <div class="cv-pipe-sub">Week {{ s.arrives_on_week }}</div>
+    </div>
+    <div></div>
+    <span class="cv-pipe-badge {% if s.arrives_on_week <= session.current_week %}now{% else %}soon{% endif %}">
+      {% if s.arrives_on_week <= session.current_week %}NOW{% else %}Wk {{ s.arrives_on_week }}{% endif %}
+    </span>
+  </div>
+  {% endfor %}
+  {% else %}
+  <p class="cv-empty">No shipments currently in transit.</p>
+  {% endif %}
+</div>
+
+<!-- ── Pipeline: outgoing orders ─────────────────────────────────────────── -->
+{% if role != 'factory' %}
+<div class="cv-section">
+  <div class="cv-section-title">📋 Outgoing Orders — Order Delay (2 weeks)</div>
+
+  <div class="cv-delay-track">
+    {% for o in outgoing %}
+    <div class="cv-delay-slot {% if o.arrives_on_week <= session.current_week %}arriving{% else %}active-order{% endif %}"
+         title="Arrives upstream Week {{ o.arrives_on_week }}">
+      {{ o.quantity }}
+    </div>
+    {% empty %}
+    <div class="cv-delay-slot" style="flex:2;">—</div>
+    {% endfor %}
+  </div>
+  <div class="cv-delay-label">
+    <span>← Arriving sooner</span>
+    <span>Arriving later →</span>
+  </div>
+
+  {% if outgoing %}
+  {% for o in outgoing %}
+  <div class="cv-pipe-item order {% if o.arrives_on_week <= session.current_week %}arriving{% endif %}">
+    <div class="cv-pipe-qty {% if o.arrives_on_week <= session.current_week %}arriving{% else %}order{% endif %}">{{ o.quantity }}</div>
+    <div>
+      <div class="cv-pipe-desc">📋 Order placed upstream</div>
+      <div class="cv-pipe-sub">Arrives upstream Week {{ o.arrives_on_week }}</div>
+    </div>
+    <div></div>
+    <span class="cv-pipe-badge {% if o.arrives_on_week <= session.current_week %}now{% else %}soon{% endif %}">
+      {% if o.arrives_on_week <= session.current_week %}NOW{% else %}Wk {{ o.arrives_on_week }}{% endif %}
+    </span>
+  </div>
+  {% endfor %}
+  {% else %}
+  <p class="cv-empty">No orders currently in transit.</p>
+  {% endif %}
+</div>
+{% else %}
+<div class="cv-section">
+  <div class="cv-section-title"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><path d="M2 20V10l5-4v4l5-4v4l5-4v10" stroke="currentColor" stroke-width="2" fill="none"/><rect x="2" y="16" width="20" height="6" rx="1" fill="currentColor" opacity="0.3"/><rect x="18" y="8" width="4" height="12" rx="1" fill="currentColor" opacity="0.5"/></svg> Factory — Production Pipeline</div>
+  <div class="cv-factory-note">
+    No upstream supplier. Units produced enter the outgoing shipment pipeline directly (2-week delivery delay).
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Inventory history chart ────────────────────────────────────────────── -->
+<div class="card" style="margin-bottom:1.5rem;">
+  <div class="card-title" style="margin-bottom:.25rem;">📈 Inventory History</div>
+  <div class="cv-chart-wrap"><canvas id="myChart"></canvas></div>
+</div>
+
+<!-- ── Week log table ─────────────────────────────────────────────────────── -->
+<div class="card" style="margin-bottom:1.5rem; overflow-x:auto;">
+  <div class="card-title" style="margin-bottom:.5rem;">📋 Week Log</div>
+  <table class="cv-table">
+    <thead>
+      <tr>
+        <th>Wk</th>
+        <th>Inv</th>
+        <th>Bklg</th>
+        <th>Ordered</th>
+        <th>Rcvd</th>
+        <th>Cost</th>
+      </tr>
+    </thead>
+    <tbody id="history-tbody"></tbody>
+  </table>
+</div>
+
+{% endblock %}

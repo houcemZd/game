@@ -1,0 +1,278 @@
+{% extends "game/base.html" %}
+{% block title %}Beer Game — Connexion{% endblock %}
+
+{% block extra_head %}
+<style>
+.landing {
+  display: grid;
+  grid-template-columns: 1fr 420px;
+  gap: 0;
+  min-height: calc(100vh - 56px);
+}
+@media (max-width: 840px) {
+  .landing { grid-template-columns: 1fr; }
+  .landing-left { display: none; }
+}
+
+/* Left — hero info panel */
+.landing-left {
+  background: linear-gradient(145deg, #0d0f14 0%, #12151e 100%);
+  border-right: 1px solid var(--border);
+  padding: 4rem 3rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+.landing-left::before {
+  content: '';
+  position: absolute;
+  top: -80px; left: -80px;
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, rgba(245,200,66,.06), transparent 70%);
+  pointer-events: none;
+}
+.ll-eyebrow {
+  font-family: var(--font-mono);
+  font-size: .68rem;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: .6rem;
+}
+.ll-title {
+  font-family: var(--font-mono);
+  font-size: 3rem;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -.02em;
+  margin-bottom: 1rem;
+}
+.ll-title .accent { color: var(--accent); }
+.ll-desc {
+  color: var(--muted);
+  font-size: .9rem;
+  line-height: 1.7;
+  max-width: 380px;
+  margin-bottom: 2.5rem;
+}
+
+.chain-demo {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  flex-wrap: wrap;
+  margin-bottom: 2.5rem;
+}
+.chain-node {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: .4rem .7rem;
+  font-size: .75rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+}
+.chain-arrow { color: var(--muted); font-size: .75rem; }
+
+.ll-features {
+  display: flex;
+  flex-direction: column;
+  gap: .65rem;
+}
+.ll-feat {
+  display: flex;
+  align-items: flex-start;
+  gap: .65rem;
+  font-size: .82rem;
+  color: var(--muted);
+}
+.ll-feat-icon {
+  width: 28px; height: 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .85rem;
+  flex-shrink: 0;
+}
+.ll-feat-text strong { color: var(--text); }
+
+/* Right — auth card */
+.landing-right {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 2.5rem;
+  background: var(--surface);
+}
+.auth-card {
+  width: 100%;
+  max-width: 360px;
+}
+.auth-card-title {
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: .25rem;
+}
+.auth-card-sub {
+  font-size: .8rem;
+  color: var(--muted);
+  margin-bottom: 1.75rem;
+}
+.auth-field { margin-bottom: 1rem; }
+.auth-label {
+  display: block;
+  font-size: .72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: .35rem;
+  font-weight: 600;
+}
+.auth-input {
+  width: 100%;
+  background: var(--surface2);
+  border: 1.5px solid var(--border);
+  border-radius: 9px;
+  color: var(--text);
+  padding: .65rem .9rem;
+  font-size: .9rem;
+  font-family: var(--font-body);
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+  box-sizing: border-box;
+}
+.auth-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(245,200,66,.1);
+}
+.auth-btn {
+  width: 100%;
+  padding: .75rem;
+  font-size: .95rem;
+  font-weight: 700;
+  justify-content: center;
+  border-radius: 9px;
+  margin-top: .25rem;
+}
+.auth-error {
+  background: rgba(239,68,68,.08);
+  border: 1px solid rgba(239,68,68,.3);
+  border-radius: 8px;
+  padding: .6rem .85rem;
+  font-size: .8rem;
+  color: var(--danger);
+  margin-bottom: 1rem;
+}
+.auth-divider {
+  display: flex; align-items: center; gap: .75rem;
+  margin: 1.25rem 0;
+}
+.auth-divider::before, .auth-divider::after {
+  content: ''; flex: 1; height: 1px; background: var(--border);
+}
+.auth-divider span { font-size: .72rem; color: var(--muted); white-space: nowrap; }
+.auth-register-link {
+  text-align: center;
+  font-size: .82rem;
+  color: var(--muted);
+  margin-top: 1.25rem;
+}
+.auth-register-link a { color: var(--accent); font-weight: 600; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="landing">
+
+  <!-- ── Left: Hero panel ─────────────────────────────────────────────────── -->
+  <div class="landing-left">
+    <div class="ll-eyebrow">MIT Supply Chain Simulation</div>
+    <h1 class="ll-title">THE <span class="accent">BEER</span><br>GAME</h1>
+    <p class="ll-desc">
+      Simulation multijoueur en temps réel. Gérez votre maillon de la chaîne d'approvisionnement, 
+      passez des commandes, et découvrez pourquoi les petites variations de demande 
+      créent de grandes oscillations — l'effet coup de fouet.
+    </p>
+
+    <div class="chain-demo">
+      <div class="chain-node">👤 Client</div>
+      <span class="chain-arrow">→</span>
+      <div class="chain-node" style="border-color:rgba(245,200,66,.4); color:var(--accent);">🛒 Détaillant</div>
+      <span class="chain-arrow">⇄</span>
+      <div class="chain-node" style="border-color:rgba(59,130,246,.4); color:#60a5fa;">🏪 Grossiste</div>
+      <span class="chain-arrow">⇄</span>
+      <div class="chain-node" style="border-color:rgba(168,85,247,.4); color:#c084fc;">🚚 Distrib.</div>
+      <span class="chain-arrow">⇄</span>
+      <div class="chain-node" style="border-color:rgba(34,197,94,.4); color:var(--success);">🏭 Usine</div>
+    </div>
+
+    <div class="ll-features">
+      <div class="ll-feat">
+        <div class="ll-feat-icon">⚡</div>
+        <div class="ll-feat-text"><strong>Temps réel</strong> — WebSockets pour une expérience fluide et simultanée</div>
+      </div>
+      <div class="ll-feat">
+        <div class="ll-feat-icon">👥</div>
+        <div class="ll-feat-text"><strong>5 joueurs</strong> — Client, Détaillant, Grossiste, Distributeur, Usine</div>
+      </div>
+      <div class="ll-feat">
+        <div class="ll-feat-icon">📊</div>
+        <div class="ll-feat-text"><strong>Analyse bullwhip</strong> — Graphiques et statistiques en fin de partie</div>
+      </div>
+      <div class="ll-feat">
+        <div class="ll-feat-icon">📱</div>
+        <div class="ll-feat-text"><strong>Multi-appareils</strong> — Jouez depuis n'importe quel écran sur le réseau</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Right: Auth card ──────────────────────────────────────────────────── -->
+  <div class="landing-right">
+    <div class="auth-card">
+
+      <div class="auth-card-title">Connexion</div>
+      <div class="auth-card-sub">Connectez-vous pour jouer ou créer une partie</div>
+
+      {% if messages %}
+        {% for message in messages %}
+        <div class="auth-error">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+
+      <form method="POST">
+        {% csrf_token %}
+
+        <div class="auth-field">
+          <label class="auth-label" for="username">Identifiant</label>
+          <input class="auth-input" type="text" id="username" name="username"
+                 placeholder="Votre identifiant" autocomplete="username" autofocus
+                 value="{{ request.POST.username|default:'' }}" />
+        </div>
+
+        <div class="auth-field">
+          <label class="auth-label" for="password">Mot de passe</label>
+          <input class="auth-input" type="password" id="password" name="password"
+                 placeholder="••••••••" autocomplete="current-password" />
+        </div>
+
+        <button type="submit" class="btn btn-primary auth-btn">
+          Connexion →
+        </button>
+      </form>
+
+      <div class="auth-divider"><span>pas encore de compte ?</span></div>
+
+      <a href="{% url 'register' %}" class="btn btn-ghost" style="width:100%; justify-content:center; border-radius:9px; padding:.7rem; font-size:.9rem;">
+        Créer un compte gratuit
+      </a>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

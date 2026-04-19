@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Beer Game — GitHub Pages Edition</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --card: #121a32;
+      --muted: #9db0d5;
+      --text: #ecf2ff;
+      --line: #24335f;
+      --accent: #7dd3fc;
+      --good: #34d399;
+      --bad: #f87171;
+      --warn: #fbbf24;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: radial-gradient(circle at top, #16213f 0, var(--bg) 50%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { margin: 0 0 8px; font-size: 1.7rem; }
+    p { margin: 0; color: var(--muted); }
+    .grid { display: grid; gap: 14px; }
+    .controls { margin-top: 18px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,0));
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+    }
+    .kpis {
+      margin-top: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+    .players {
+      margin-top: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+    .stat-label { font-size: .8rem; color: var(--muted); }
+    .stat-value { font-size: 1.2rem; font-weight: 700; margin-top: 4px; }
+    .good { color: var(--good); }
+    .bad { color: var(--bad); }
+    .warn { color: var(--warn); }
+    label { display: block; font-size: .8rem; color: var(--muted); margin-bottom: 6px; }
+    input, select, button {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #0d1630;
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px;
+      font-size: .95rem;
+    }
+    button {
+      cursor: pointer;
+      background: linear-gradient(180deg, #10426f, #0d2e52);
+      border-color: #1f578b;
+      font-weight: 700;
+    }
+    button:hover { filter: brightness(1.08); }
+    .btn-secondary {
+      background: #13264b;
+      border-color: #2b477c;
+      margin-top: 8px;
+    }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .pipeline { margin-top: 6px; font-size: .82rem; color: var(--muted); line-height: 1.5; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 14px;
+      font-size: .86rem;
+    }
+    th, td { border-bottom: 1px solid var(--line); padding: 8px 6px; text-align: right; }
+    th:first-child, td:first-child { text-align: left; }
+    .small { font-size: .78rem; color: var(--muted); margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>🍺 Beer Game — GitHub Pages Edition</h1>
+    <p>A static browser version of the game so it can run directly on GitHub Pages.</p>
+
+    <div class="grid controls">
+      <div class="card">
+        <label for="demand">Customer demand this week</label>
+        <input id="demand" type="number" min="0" value="4" />
+        <label for="mode" style="margin-top:10px;">Demand mode</label>
+        <select id="mode">
+          <option value="manual">Manual</option>
+          <option value="classic" selected>Classic MIT profile (4→8, -1/0/+1 noise)</option>
+        </select>
+        <button id="nextWeek" style="margin-top:10px;">Advance one week</button>
+        <button id="reset" class="btn-secondary">Reset game</button>
+      </div>
+
+      <div class="card">
+        <div class="stat-label">Week</div>
+        <div class="stat-value" id="weekLabel">1</div>
+        <div class="small">Order and shipment delays are both 2 weeks. Factory production enters its pipeline with the same delay.</div>
+      </div>
+    </div>
+
+    <div class="grid kpis" id="totals"></div>
+
+    <div class="grid players" id="players"></div>
+
+    <div class="card">
+      <h3 style="margin:0 0 8px;">History</h3>
+      <div style="overflow:auto; max-height:300px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Week</th>
+              <th>Customer</th>
+              <th>Retailer order</th>
+              <th>Wholesaler order</th>
+              <th>Distributor order</th>
+              <th>Factory production</th>
+            </tr>
+          </thead>
+          <tbody id="history"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const roles = ["retailer", "wholesaler", "distributor", "factory"];
+    const HOLDING_COST_PER_UNIT = 0.5;
+    const BACKLOG_COST_PER_UNIT = 1.0;
+    const downstream = {
+      retailer: null,
+      wholesaler: "retailer",
+      distributor: "wholesaler",
+      factory: "distributor",
+    };
+    const upstream = {
+      retailer: "wholesaler",
+      wholesaler: "distributor",
+      distributor: "factory",
+      factory: null,
+    };
+
+    const state = {
+      week: 1,
+      players: {},
+      orderPipes: {},
+      shipPipes: {},
+      history: [],
+      pendingOrders: { retailer: 4, wholesaler: 4, distributor: 4, factory: 4 },
+    };
+
+    function init() {
+      roles.forEach((r) => {
+        state.players[r] = { inventory: 12, backlog: 0, totalCost: 0 };
+        state.orderPipes[r] = [4, 4];
+        state.shipPipes[r] = [4, 4];
+      });
+      render();
+    }
+
+    function demandForWeek(week) {
+      // Classic MIT profile: stable 4 units for weeks 1-4, then 8 with -1/0/+1 noise.
+      const base = week <= 4 ? 4 : 8;
+      return Math.max(0, base + (Math.floor(Math.random() * 3) - 1));
+    }
+
+    function getInputOrder(role) {
+      const el = document.getElementById(`order-${role}`);
+      const v = Number(el?.value || 0);
+      return Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
+    }
+
+    function classForInventory(v) {
+      if (v > 6) return "good";
+      if (v > 0) return "warn";
+      return "bad";
+    }
+
+    function render() {
+      document.getElementById("weekLabel").textContent = String(state.week);
+
+      const totals = roles.map((r) => state.players[r].totalCost).reduce((a, b) => a + b, 0);
+      document.getElementById("totals").innerHTML = `
+        <div class="card"><div class="stat-label">Total supply-chain cost</div><div class="stat-value">$${totals.toFixed(1)}</div></div>
+        <div class="card"><div class="stat-label">Customer demand (last week)</div><div class="stat-value">${(state.history.length ? state.history[state.history.length - 1].demand : "—")}</div></div>
+      `;
+
+      document.getElementById("players").innerHTML = roles.map((r) => {
+        const p = state.players[r];
+        return `
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">
+              <strong style="text-transform:capitalize">${r}</strong>
+              <span style="color:var(--muted);font-size:.8rem;">Cost $${p.totalCost.toFixed(1)}</span>
+            </div>
+            <div class="row" style="margin-top:10px;">
+              <div><div class="stat-label">Inventory</div><div class="stat-value ${classForInventory(p.inventory)}">${p.inventory}</div></div>
+              <div><div class="stat-label">Backlog</div><div class="stat-value ${p.backlog > 0 ? "bad" : "good"}">${p.backlog}</div></div>
+            </div>
+            <label for="order-${r}" style="margin-top:8px;">Order / production for next week</label>
+            <input id="order-${r}" type="number" min="0" value="${state.pendingOrders[r]}" />
+            <div class="pipeline">Incoming orders: [${state.orderPipes[r].join(", ")}]<br/>Incoming shipments: [${state.shipPipes[r].join(", ")}]</div>
+          </div>
+        `;
+      }).join("");
+
+      document.getElementById("history").innerHTML = state.history.slice().reverse().map((h) => `
+        <tr>
+          <td>${h.week}</td>
+          <td>${h.demand}</td>
+          <td>${h.orders.retailer}</td>
+          <td>${h.orders.wholesaler}</td>
+          <td>${h.orders.distributor}</td>
+          <td>${h.orders.factory}</td>
+        </tr>
+      `).join("");
+    }
+
+    function shiftPipe(pipe) {
+      const arriving = pipe[0];
+      pipe[0] = pipe[1];
+      pipe[1] = 0;
+      return arriving;
+    }
+
+    function advanceWeek() {
+      const mode = document.getElementById("mode").value;
+      const demandInput = document.getElementById("demand");
+      const customerDemand = mode === "classic" ? demandForWeek(state.week) : Math.max(0, Number(demandInput.value || 0));
+      demandInput.value = String(customerDemand);
+
+      const arrivingOrders = {};
+      roles.forEach((r) => {
+        const arrivingShipment = shiftPipe(state.shipPipes[r]);
+        state.players[r].inventory += arrivingShipment;
+        arrivingOrders[r] = shiftPipe(state.orderPipes[r]);
+      });
+
+      const demandByRole = {
+        retailer: customerDemand,
+        wholesaler: arrivingOrders.wholesaler,
+        distributor: arrivingOrders.distributor,
+        factory: arrivingOrders.factory,
+      };
+
+      roles.forEach((r) => {
+        const player = state.players[r];
+        const totalNeed = player.backlog + demandByRole[r];
+        const shipped = Math.min(player.inventory, totalNeed);
+        player.inventory -= shipped;
+        player.backlog = totalNeed - shipped;
+
+        if (downstream[r]) {
+          state.shipPipes[downstream[r]][1] += shipped;
+        }
+
+        player.totalCost += (player.inventory * HOLDING_COST_PER_UNIT) + (player.backlog * BACKLOG_COST_PER_UNIT);
+      });
+
+      const orders = {
+        retailer: getInputOrder("retailer"),
+        wholesaler: getInputOrder("wholesaler"),
+        distributor: getInputOrder("distributor"),
+        factory: getInputOrder("factory"),
+      };
+
+      state.orderPipes.wholesaler[1] += orders.retailer;
+      state.orderPipes.distributor[1] += orders.wholesaler;
+      state.orderPipes.factory[1] += orders.distributor;
+      state.shipPipes.factory[1] += orders.factory;
+
+      state.pendingOrders = { ...orders };
+      state.history.push({ week: state.week, demand: customerDemand, orders });
+      state.week += 1;
+      render();
+    }
+
+    function resetGame() {
+      state.week = 1;
+      state.history = [];
+      state.pendingOrders = { retailer: 4, wholesaler: 4, distributor: 4, factory: 4 };
+      roles.forEach((r) => {
+        state.players[r] = { inventory: 12, backlog: 0, totalCost: 0 };
+        state.orderPipes[r] = [4, 4];
+        state.shipPipes[r] = [4, 4];
+      });
+      document.getElementById("demand").value = "4";
+      render();
+    }
+
+    document.getElementById("nextWeek").addEventListener("click", advanceWeek);
+    document.getElementById("reset").addEventListener("click", resetGame);
+
+    init();
+  </script>
+</body>
+</html>

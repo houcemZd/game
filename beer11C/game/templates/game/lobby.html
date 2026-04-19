@@ -1,0 +1,1032 @@
+{% extends "game/base.html" %}
+{% block title %}Lobby — {{ session.name }}{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+/* ── Grid ─────────────────────────────────────────────────────────────────── */
+.lobby-grid { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; align-items:start; }
+@media (max-width:860px) { .lobby-grid { grid-template-columns:1fr; } }
+
+/* ── Role cards ──────────────────────────────────────────────────────────── */
+.role-card {
+  border:2px solid var(--border); border-radius:14px; padding:1.1rem 1.2rem;
+  background:var(--surface2); transition:border-color .25s, background .25s, transform .2s;
+  position:relative; overflow:hidden;
+}
+.role-card:hover { transform:translateY(-2px); }
+.role-card.joined  { border-color:var(--success); background:rgba(34,197,94,.04); }
+.role-card.joined::after {
+  content:''; position:absolute; inset:0;
+  background:radial-gradient(circle at top left,rgba(34,197,94,.07),transparent 60%);
+  pointer-events:none;
+}
+
+.rc-top { display:flex; align-items:flex-start; gap:.85rem; margin-bottom:.7rem; }
+.rc-emoji { font-size:1.9rem; line-height:1; flex-shrink:0; margin-top:.1rem; }
+.rc-info  { flex:1; min-width:0; }
+.rc-title { font-family:var(--font-mono); font-size:.95rem; font-weight:700; display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
+.rc-desc  { font-size:.72rem; color:var(--muted); margin-top:.2rem; line-height:1.45; }
+.rc-dot   { width:9px; height:9px; border-radius:50%; background:var(--border); flex-shrink:0; margin-top:.45rem; transition:background .3s,box-shadow .3s; }
+.rc-dot.on  { background:var(--success); box-shadow:0 0 7px var(--success); }
+.rc-dot.off { background:var(--accent);  animation:blink 1.6s infinite; }
+@keyframes blink { 0%,100%{opacity:1}50%{opacity:.35} }
+
+.rc-name-tag {
+  display:inline-flex; align-items:center; gap:.3rem;
+  padding:.18rem .55rem; border-radius:999px; font-size:.7rem; font-weight:700;
+  font-family:var(--font-mono); color:var(--success);
+  background:rgba(34,197,94,.12); border:1px solid rgba(34,197,94,.3);
+  margin-bottom:.55rem; opacity:0; transform:translateY(3px);
+  transition:opacity .3s,transform .3s;
+}
+.rc-name-tag.show { opacity:1; transform:none; }
+
+.link-row { display:flex; align-items:center; gap:.45rem; flex-wrap:nowrap; }
+.link-pill {
+  flex:1; min-width:0; font-family:var(--font-mono); font-size:.65rem;
+  color:var(--muted); background:var(--surface); border:1px solid var(--border);
+  border-radius:6px; padding:.3rem .6rem;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.btn-lnk {
+  flex-shrink:0; border-radius:6px; padding:.3rem .7rem; font-size:.72rem;
+  font-weight:700; cursor:pointer; white-space:nowrap; border:1px solid var(--border);
+  background:var(--surface); color:var(--muted); transition:all .15s;
+  display:inline-flex; align-items:center; gap:.3rem; text-decoration:none;
+}
+.btn-lnk:hover      { border-color:var(--accent); color:var(--accent); text-decoration:none; }
+.btn-lnk.copied     { border-color:var(--success); color:var(--success); }
+.btn-lnk.btn-open   { background:var(--accent); color:#0d0f14; border-color:var(--accent); }
+.btn-lnk.btn-open:hover { background:#fdd835; color:#0d0f14; }
+
+/* ── Status bar ──────────────────────────────────────────────────────────── */
+.orb {
+  display:inline-flex; align-items:center; gap:.4rem;
+  padding:.28rem .7rem; border-radius:999px; font-size:.7rem; font-weight:600;
+  border:1px solid var(--border); color:var(--muted); transition:all .2s;
+}
+.orb.joined { border-color:var(--success); color:var(--success); background:rgba(34,197,94,.08); }
+
+/* ── Progress ring ───────────────────────────────────────────────────────── */
+.progress-ring-wrap { display:flex; flex-direction:column; align-items:center; gap:.35rem; }
+.progress-ring-svg { transform:rotate(-90deg); }
+.progress-ring-bg { fill:none; stroke:var(--border); stroke-width:4; }
+.progress-ring-fg { fill:none; stroke:var(--success); stroke-width:4; stroke-linecap:round; transition:stroke-dashoffset .5s ease; }
+.progress-ring-text { font-family:var(--font-mono); font-size:1.3rem; font-weight:800; fill:var(--text); }
+
+/* ── QR overlay ──────────────────────────────────────────────────────────── */
+.qr-ov { display:none; position:fixed; inset:0; z-index:500; background:rgba(13,15,20,.8); backdrop-filter:blur(3px); align-items:center; justify-content:center; }
+.qr-ov.open { display:flex; }
+.qr-box { background:#fff; border-radius:14px; padding:1.4rem 1.4rem 1rem; text-align:center; animation:popIn .2s ease; }
+@keyframes popIn { from{transform:scale(.85);opacity:0} to{transform:scale(1);opacity:1} }
+.qr-title { font-size:.8rem; font-weight:700; color:#0d0f14; margin-bottom:.75rem; font-family:monospace; }
+.qr-close { margin-top:.75rem; width:100%; background:#0d0f14; color:#fff; border:none; border-radius:8px; padding:.5rem; font-size:.82rem; cursor:pointer; font-weight:600; }
+
+/* ── Toast ───────────────────────────────────────────────────────────────── */
+#tcont { position:fixed; bottom:1.5rem; right:1.5rem; display:flex; flex-direction:column; gap:.4rem; z-index:9999; pointer-events:none; }
+.t { background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:.5rem .85rem; font-size:.78rem; color:var(--text); animation:sin .2s ease,sout .3s ease 3s forwards; max-width:260px; }
+.t.ok { border-color:var(--success); }
+@keyframes sin  { from{transform:translateX(110%);opacity:0} to{transform:none;opacity:1} }
+@keyframes sout { to{opacity:0} }
+
+/* ── Game settings card ──────────────────────────────────────────────────── */
+.settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:.6rem; }
+.settings-item {
+  background:var(--surface2); border:1px solid var(--border); border-radius:8px;
+  padding:.6rem .75rem; display:flex; flex-direction:column; gap:.15rem;
+}
+.settings-item-label { font-size:.62rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
+.settings-item-value { font-family:var(--font-mono); font-size:1rem; font-weight:700; color:var(--accent); }
+
+/* ── Chat ────────────────────────────────────────────────────────────────── */
+.chat-box {
+  border:1px solid var(--border); border-radius:0 0 10px 10px; background:var(--surface);
+  overflow:hidden; display:flex; flex-direction:column;
+}
+.chat-messages {
+  flex:1; overflow-y:auto; padding:.6rem .8rem; display:flex; flex-direction:column;
+  gap:.3rem; min-height:80px; max-height:240px;
+}
+.chat-msg { font-size:.76rem; line-height:1.45; animation:fadeUp .2s ease both; }
+.chat-msg-author { font-family:var(--font-mono); font-weight:700; font-size:.68rem; }
+.chat-msg-body { color:var(--text); }
+.chat-msg-time { font-size:.58rem; color:var(--muted2); margin-left:.4rem; }
+.chat-empty { font-size:.72rem; color:var(--muted2); text-align:center; padding:1rem; font-style:italic; }
+.chat-input-row { display:flex; border-top:1px solid var(--border); background:var(--surface2); }
+.chat-input {
+  flex:1; background:transparent; border:none; color:var(--text); padding:.55rem .75rem;
+  font-size:.8rem; font-family:var(--font-body); outline:none;
+}
+.chat-input::placeholder { color:var(--muted2); }
+.chat-send {
+  background:var(--accent); color:#0d0f14; border:none; padding:.4rem .85rem;
+  font-weight:700; font-size:.75rem; cursor:pointer; transition:background .15s;
+}
+.chat-send:hover { background:#fdd835; }
+
+/* ── Countdown overlay ───────────────────────────────────────────────────── */
+.countdown-overlay {
+  display:none; position:fixed; inset:0; z-index:600;
+  background:rgba(13,15,20,.92); backdrop-filter:blur(6px);
+  align-items:center; justify-content:center; flex-direction:column;
+}
+.countdown-overlay.active { display:flex; }
+.countdown-number {
+  font-family:var(--font-mono); font-size:8rem; font-weight:900;
+  color:var(--accent); text-shadow:0 0 60px var(--accent-glow);
+  animation:countPulse .8s ease-in-out infinite;
+}
+.countdown-label {
+  font-family:var(--font-mono); font-size:1.1rem; color:var(--muted);
+  margin-top:1rem; letter-spacing:.15em; text-transform:uppercase;
+}
+@keyframes countPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.08)} }
+
+/* ── Host start button ───────────────────────────────────────────────────── */
+.host-start-btn {
+  background:linear-gradient(135deg, #22c55e, #16a34a);
+  color:#fff; border:none; border-radius:10px;
+  padding:.85rem 2rem; font-size:1rem; font-weight:700;
+  cursor:pointer; font-family:var(--font-mono);
+  box-shadow:0 4px 20px rgba(34,197,94,.35);
+  transition:all .2s; display:inline-flex; align-items:center; gap:.5rem;
+  letter-spacing:.02em;
+}
+.host-start-btn:hover { transform:translateY(-2px); box-shadow:0 8px 30px rgba(34,197,94,.5); background:linear-gradient(135deg, #4ade80, #22c55e); }
+.host-start-btn:disabled { opacity:.4; cursor:not-allowed; transform:none; box-shadow:none; }
+
+/* ── Copy all button ─────────────────────────────────────────────────────── */
+.copy-all-btn {
+  background:var(--surface2); border:1px solid var(--border); border-radius:8px;
+  padding:.4rem .9rem; font-size:.72rem; font-weight:700; cursor:pointer;
+  color:var(--muted); transition:all .15s; display:inline-flex; align-items:center; gap:.3rem;
+  font-family:var(--font-mono);
+}
+.copy-all-btn:hover { border-color:var(--accent); color:var(--accent); }
+.copy-all-btn.copied { border-color:var(--success); color:var(--success); }
+
+/* ── Waiting dots animation ──────────────────────────────────────────────── */
+.waiting-dots { display:inline-flex; gap:3px; margin-left:.3rem; }
+.waiting-dots span {
+  width:4px; height:4px; border-radius:50%; background:var(--muted);
+  animation:dotBounce 1.4s infinite both;
+}
+.waiting-dots span:nth-child(2) { animation-delay:.16s; }
+.waiting-dots span:nth-child(3) { animation-delay:.32s; }
+@keyframes dotBounce { 0%,80%,100%{transform:scale(0)} 40%{transform:scale(1)} }
+
+/* ── Spectator board ─────────────────────────────────────────────────────── */
+.spec-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:1rem; }
+.spec-card {
+  background:var(--surface2); border:2px solid var(--border); border-radius:14px;
+  padding:1.1rem 1.2rem; transition:border-color .3s;
+}
+.spec-card.inv-good { border-color:rgba(34,197,94,.45); }
+.spec-card.inv-warn { border-color:rgba(245,200,66,.45); }
+.spec-card.inv-bad  { border-color:rgba(239,68,68,.45);  }
+
+.spec-role { font-family:var(--font-mono); font-size:.68rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-bottom:.35rem; display:flex; align-items:center; gap:.4rem; }
+.spec-name { font-size:.82rem; font-weight:600; color:var(--text); margin-bottom:.75rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.spec-stat { display:flex; justify-content:space-between; align-items:center; font-size:.78rem; padding:.18rem 0; border-bottom:1px solid rgba(255,255,255,.05); }
+.spec-stat:last-child { border-bottom:none; }
+.spec-stat-lbl { color:var(--muted); font-size:.72rem; }
+.spec-stat-val { font-family:var(--font-mono); font-weight:700; }
+.spec-stat-val.good { color:var(--success); }
+.spec-stat-val.warn { color:var(--accent); }
+.spec-stat-val.bad  { color:var(--danger); }
+
+/* live pulse dot */
+.live-dot { width:8px; height:8px; border-radius:50%; background:var(--danger); display:inline-block; animation:live-pulse 1.2s infinite; }
+@keyframes live-pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.75)} }
+
+/* section toggle */
+#section-spectate { display:none; }
+
+/* ── Road board styles (spectator board) ────────────────────────────────── */
+.road-board { display:flex; align-items:stretch; overflow-x:auto; gap:.45rem; padding:.15rem .1rem .35rem; font-family:var(--font-mono); }
+.road-node {
+  flex:0 0 auto; min-width:96px; max-width:122px;
+  border:1.5px solid var(--border); border-radius:10px; overflow:hidden;
+  display:flex; flex-direction:column;
+}
+.road-node-hdr {
+  font-size:.6rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em;
+  padding:.38rem .5rem; text-align:center;
+  display:flex; align-items:center; justify-content:center; gap:.35rem; white-space:nowrap;
+}
+.road-node-body {
+  flex:1; display:flex; flex-direction:column; align-items:center;
+  justify-content:flex-start; padding:6px 5px; background:var(--surface); gap:4px;
+}
+.bgb-inv-box {
+  width:100%; border:1.5px solid rgba(34,197,94,.3); border-radius:8px;
+  padding:.45rem .35rem; text-align:center; position:relative; overflow:hidden;
+  background:var(--surface2);
+}
+.bgb-inv-healthbar { position:absolute; bottom:0; left:0; height:3px; border-radius:0 0 6px 6px; transition:width .5s, background .4s; }
+.bgb-inv-val { font-size:1.5rem; font-weight:900; line-height:1; }
+.bgb-inv-val.good { color:var(--success); }
+.bgb-inv-val.warn { color:var(--accent); }
+.bgb-inv-val.bad  { color:var(--danger); }
+.bgb-backlog { font-size:.55rem; color:var(--danger); margin-top:2px; font-weight:700; }
+.bgb-backlog.zero { color:var(--muted); font-weight:500; }
+
+/* Road segment */
+.road-seg { flex:1; min-width:96px; max-width:152px; display:flex; flex-direction:column; }
+.road-orders-row {
+  display:flex; justify-content:space-around; align-items:center;
+  padding:5px 10px 0; min-height:36px; gap:4px;
+}
+.road-surface {
+  flex:1; min-height:58px;
+  background:linear-gradient(180deg, #181c28 0%, #1a1f2c 8%, #151924 35%, #151924 65%, #1a1f2c 92%, #181c28 100%);
+  border-top:3px solid #2a3148; border-bottom:3px solid #2a3148;
+  position:relative; overflow:hidden;
+  display:flex; align-items:center; justify-content:space-around; padding:0 14px;
+}
+.road-surface::after {
+  content:''; position:absolute; top:50%; left:-200%;
+  width:400%; height:3px;
+  background:repeating-linear-gradient(90deg, transparent 0, transparent 8px, rgba(245,200,66,.45) 8px, rgba(245,200,66,.45) 20px);
+  animation:road-flow .75s linear infinite; pointer-events:none;
+  filter:drop-shadow(0 0 3px rgba(245,200,66,.2));
+}
+@keyframes road-flow { from { transform:translateY(-50%) translateX(0); } to { transform:translateY(-50%) translateX(28px); } }
+
+.road-orders-row .bgb-slot {
+  flex-shrink:0; border-radius:4px 8px 8px 4px; height:36px; min-width:48px;
+  display:flex; align-items:center; justify-content:center; transition:border-color .2s, background .2s;
+}
+.road-orders-row .bgb-slot.blue {
+  background:linear-gradient(135deg, rgba(10,26,60,.9) 0%, rgba(20,40,90,.85) 100%);
+  border:2px solid rgba(59,130,246,.65); border-left:4px solid rgba(59,130,246,.85);
+  box-shadow:0 2px 8px rgba(59,130,246,.15);
+}
+.road-orders-row .bgb-slot.blue .bgb-v { color:#93c5fd; font-size:.9rem; font-weight:900; text-shadow:0 0 6px rgba(59,130,246,.6); }
+.road-orders-row .bgb-slot.arriving { border-color:var(--success)!important; background:rgba(10,40,20,.85)!important; }
+.road-orders-row .bgb-slot.arriving .bgb-v { color:#4ade80!important; }
+.road-orders-row .bgb-slot:not(.blue):not(.amber):not(.arriving) { opacity:.13; border:1px dashed rgba(255,255,255,.08); background:transparent; border-radius:5px; }
+.road-orders-row .bgb-slot:not(.blue):not(.amber):not(.arriving) .bgb-v { color:transparent; }
+
+.road-surface .bgb-slot {
+  flex-shrink:0; border-radius:5px; height:30px; min-width:48px;
+  display:flex; align-items:center; justify-content:center; transition:border-color .2s, background .2s;
+}
+.road-surface .bgb-slot.amber {
+  background:linear-gradient(135deg, rgba(60,42,0,.8) 0%, rgba(80,55,0,.75) 100%);
+  border:1.5px solid rgba(245,200,66,.6); border-top:3px solid rgba(245,200,66,.75);
+  box-shadow:0 2px 8px rgba(245,200,66,.12);
+}
+.road-surface .bgb-slot.amber .bgb-v { color:#fde68a; font-size:.82rem; font-weight:900; text-shadow:0 0 5px rgba(245,200,66,.5); }
+.road-surface .bgb-slot:not(.amber):not(.blue):not(.arriving) { opacity:.12; border:1px dashed rgba(245,200,66,.15); background:transparent; }
+.road-surface .bgb-slot:not(.amber):not(.blue):not(.arriving) .bgb-v { color:transparent; }
+
+.road-seg-labels {
+  display:flex; justify-content:space-around; align-items:center;
+  padding:3px 4px; min-height:24px; gap:4px;
+}
+.road-seg-lbl {
+  font-size:.46rem; text-transform:uppercase; letter-spacing:.06em;
+  padding:.14rem .42rem; border-radius:999px; font-weight:700; white-space:nowrap;
+}
+.road-seg-lbl.blue  { color:#93c5fd; background:rgba(59,130,246,.12); border:1px solid rgba(59,130,246,.3); }
+.road-seg-lbl.amber { color:#fde68a; background:rgba(245,200,66,.1); border:1px solid rgba(245,200,66,.28); }
+
+.road-flow-dir {
+  position:absolute; top:50%; right:6px;
+  transform:translateY(-50%); display:flex; flex-direction:column; gap:2px;
+  pointer-events:none; opacity:.55;
+}
+.rfd { font-size:.52rem; font-weight:700; letter-spacing:-.02em; }
+.rfd.blue  { color:#60a5fa; }
+.rfd.amber { color:#fbbf24; }
+
+/* Base bgb-slot */
+.bgb-slot {
+  display:flex; align-items:center; justify-content:center;
+  border:1px solid var(--border); border-radius:5px;
+  background:var(--surface2); min-height:34px; width:100%;
+  transition:border-color .2s, background .2s;
+}
+.bgb-slot.amber { border-color:rgba(245,200,66,.35); background:rgba(245,200,66,.07); }
+.bgb-slot.amber .bgb-v { color:#ffd36a; font-size:.82rem; font-weight:800; }
+.bgb-slot.blue  { border-color:rgba(59,130,246,.35); background:rgba(59,130,246,.07); }
+.bgb-slot.blue  .bgb-v { color:#8ecbff; font-size:.82rem; font-weight:800; }
+.bgb-slot.arriving { border-color:var(--success)!important; background:rgba(34,197,94,.12)!important; }
+.bgb-slot.arriving .bgb-v { color:var(--success)!important; }
+.bgb-v { font-family:var(--font-mono); font-size:.9rem; font-weight:800; color:var(--muted); line-height:1; }
+
+/* Factory pipeline */
+.factory-pipeline { width:100%; }
+.fac-pipeline-header { font-size:.5rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:4px; text-align:center; }
+.fac-pipe-row { display:flex; align-items:center; gap:4px; }
+.fac-pipe-col { flex:1; display:flex; flex-direction:column; gap:3px; }
+.fac-pipe-lbl { font-size:.42rem; text-transform:uppercase; text-align:center; font-weight:700; }
+.fac-pipe-lbl.amber { color:rgba(245,200,66,.65); }
+.fac-pipe-lbl.blue  { color:rgba(59,130,246,.65); }
+.fac-pipe-arrow { color:var(--muted); font-size:.6rem; flex-shrink:0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="tcont"></div>
+
+<!-- QR overlay -->
+<div class="qr-ov" id="qr-ov" onclick="closeQR()">
+  <div class="qr-box" onclick="event.stopPropagation()">
+    <div class="qr-title" id="qr-title">Scan to join</div>
+    <div id="qr-el"></div>
+    <button class="qr-close" onclick="closeQR()">&#10005; Close</button>
+  </div>
+</div>
+
+<!-- Countdown overlay -->
+<div class="countdown-overlay" id="countdown-overlay">
+  <div class="countdown-number" id="countdown-number">3</div>
+  <div class="countdown-label">Game starting</div>
+</div>
+
+<!-- ── Header ─────────────────────────────────────────────────────────────── -->
+<div style="text-align:center; padding:1.75rem 0 1.5rem;">
+  <div style="font-family:var(--font-mono); font-size:.7rem; color:var(--muted); letter-spacing:.18em; text-transform:uppercase; margin-bottom:.4rem;" id="hdr-label">Multiplayer Lobby</div>
+  <h2 style="font-family:var(--font-mono); font-size:1.9rem; margin-bottom:.5rem;">{{ session.name }}</h2>
+  <div style="display:flex; align-items:center; justify-content:center; gap:.75rem; flex-wrap:wrap;">
+    <div class="week-badge" id="week-badge"><strong>{{ session.max_weeks }}</strong> weeks &middot; Week 0 / {{ session.max_weeks }}</div>
+    <div style="font-size:.75rem; color:var(--muted);" id="hdr-sub">Send each link to a different player</div>
+  </div>
+</div>
+
+<!-- ── Status bar ─────────────────────────────────────────────────────────── -->
+<div class="card" style="margin-bottom:1.4rem; padding:.8rem 1.2rem;">
+  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.75rem;">
+    <div style="display:flex; gap:.4rem; flex-wrap:wrap; align-items:center;" id="orb-row">
+      {% for link in role_links %}
+      <div class="orb" id="orb-{{ link.role }}">{{ link.emoji }} {{ link.role|title }}</div>
+      {% endfor %}
+    </div>
+    <div style="display:flex; align-items:center; gap:1rem;">
+      <div class="progress-ring-wrap">
+        <svg width="48" height="48" class="progress-ring-svg">
+          <circle class="progress-ring-bg" cx="24" cy="24" r="20"></circle>
+          <circle class="progress-ring-fg" id="progress-ring-fg" cx="24" cy="24" r="20"
+                  stroke-dasharray="125.66" stroke-dashoffset="125.66"></circle>
+          <text class="progress-ring-text" id="progress-ring-text" x="24" y="24"
+                text-anchor="middle" dominant-baseline="central"
+                transform="rotate(90 24 24)">0/5</text>
+        </svg>
+      </div>
+      <div id="status-msg" style="font-family:var(--font-mono); font-size:.82rem; color:var(--muted);">
+        Waiting for players<span class="waiting-dots"><span></span><span></span><span></span></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     PRE-GAME SECTION
+════════════════════════════════════════════════════════════════════════════ -->
+<div id="section-pregame">
+<div class="lobby-grid">
+
+<!-- ══ LEFT: Role invite cards ══════════════════════════════════════════════ -->
+<div style="display:flex; flex-direction:column; gap:.85rem;">
+  <div style="display:flex; align-items:center; justify-content:space-between;">
+    <div style="font-size:.68rem; color:var(--muted); text-transform:uppercase; letter-spacing:.1em;">Player Invite Links</div>
+    <button class="copy-all-btn" id="copy-all-btn" onclick="doCopyAll()">&#128203; Copy All Links</button>
+  </div>
+
+{% for link in role_links %}
+  <div class="role-card" id="card-{{ link.role }}">
+    <div class="rc-top">
+      <span class="rc-emoji">{{ link.emoji }}</span>
+      <div class="rc-info">
+        <div class="rc-title">
+          {{ link.role|title }}
+          <span class="role-badge role-{{ link.role }}">{{ link.role }}</span>
+        </div>
+        <div class="rc-desc">
+          {% if link.role == 'customer' %}Authenticates and places orders on the platform each week
+          {% elif link.role == 'retailer' %}Receives goods &middot; delivers to customer &middot; orders from Wholesaler
+          {% elif link.role == 'wholesaler' %}Receives goods &middot; delivers to Retailer &middot; orders from Distributor
+          {% elif link.role == 'distributor' %}Receives goods &middot; delivers to Wholesaler &middot; orders from Factory
+          {% elif link.role == 'factory' %}Receives demands &middot; delivers to Distributor &middot; launches production{% endif %}
+        </div>
+      </div>
+      <div class="rc-dot off" id="dot-{{ link.role }}"></div>
+    </div>
+
+    <div class="rc-name-tag" id="ntag-{{ link.role }}">
+      &#10003; <span id="ntext-{{ link.role }}">Joined</span>
+    </div>
+
+    <div class="link-row">
+      <span class="link-pill" id="pill-{{ link.role }}">{{ link.url }}</span>
+      <button class="btn-lnk" id="bcopy-{{ link.role }}"
+              data-url="{{ link.url }}" data-role="{{ link.role }}"
+              onclick="doCopy(this)">&#128203; Copy</button>
+      <a class="btn-lnk btn-open"
+         href="{{ link.url }}"
+         target="_blank" rel="noopener noreferrer">&#8599; Open</a>
+      <button class="btn-lnk" data-url="{{ link.url }}" data-role="{{ link.role }}"
+              onclick="doQR(this)" title="QR Code">&#9635;</button>
+    </div>
+  </div>
+{% endfor %}
+</div>
+
+<!-- ══ RIGHT: Game info + Chat ══════════════════════════════════════════════ -->
+<div style="display:flex; flex-direction:column; gap:1.2rem;">
+
+  <!-- Game Settings -->
+  <div class="card">
+    <div class="card-title">&#9881; Game Settings</div>
+    <div class="settings-grid">
+      <div class="settings-item">
+        <div class="settings-item-label">Max Weeks</div>
+        <div class="settings-item-value">{{ game_settings.max_weeks }}</div>
+      </div>
+      <div class="settings-item">
+        <div class="settings-item-label">Pipeline Delay</div>
+        <div class="settings-item-value">{{ game_settings.pipeline_delay }}w</div>
+      </div>
+      <div class="settings-item">
+        <div class="settings-item-label">Initial Inventory</div>
+        <div class="settings-item-value">{{ game_settings.initial_inventory }}</div>
+      </div>
+      <div class="settings-item">
+        <div class="settings-item-label">Holding Cost</div>
+        <div class="settings-item-value">${{ game_settings.holding_cost }}/unit</div>
+      </div>
+      <div class="settings-item">
+        <div class="settings-item-label">Backlog Cost</div>
+        <div class="settings-item-value">${{ game_settings.backlog_cost }}/unit</div>
+      </div>
+      <div class="settings-item">
+        <div class="settings-item-label">Players</div>
+        <div class="settings-item-value">5 roles</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- How each week works -->
+  <div class="card">
+    <div class="card-title">&#128214; How each week works</div>
+    <div style="display:flex; flex-direction:column; gap:.55rem; margin-top:.3rem;">
+      <div style="display:flex; gap:.7rem; align-items:flex-start; font-size:.78rem; color:var(--muted);">
+        <span style="color:var(--accent); font-family:var(--font-mono); font-weight:800; flex-shrink:0; min-width:22px;">1</span>
+        <span><strong style="color:var(--text);">Customer</strong> &mdash; logs in and places an order on the platform</span>
+      </div>
+      <div style="display:flex; gap:.7rem; align-items:flex-start; font-size:.78rem; color:var(--muted);">
+        <span style="color:var(--distributor-color); font-family:var(--font-mono); font-weight:800; flex-shrink:0; min-width:22px;">2</span>
+        <span><strong style="color:var(--text);">Receive goods</strong> &mdash; each actor receives and confirms incoming deliveries</span>
+      </div>
+      <div style="display:flex; gap:.7rem; align-items:flex-start; font-size:.78rem; color:var(--muted);">
+        <span style="color:var(--wholesaler-color); font-family:var(--font-mono); font-weight:800; flex-shrink:0; min-width:22px;">3</span>
+        <span><strong style="color:var(--text);">Downstream delivery</strong> &mdash; enough stock? ship or create backlog</span>
+      </div>
+      <div style="display:flex; gap:.7rem; align-items:flex-start; font-size:.78rem; color:var(--muted);">
+        <span style="color:var(--accent); font-family:var(--font-mono); font-weight:800; flex-shrink:0; min-width:22px;">4</span>
+        <span><strong style="color:var(--text);">Place orders</strong> &mdash; fill in weekly order form to upstream supplier</span>
+      </div>
+      <div style="display:flex; gap:.7rem; align-items:flex-start; font-size:.78rem; color:var(--muted);">
+        <span style="color:var(--factory-color); font-family:var(--font-mono); font-weight:800; flex-shrink:0; min-width:22px;">&#9733;</span>
+        <span><strong style="color:var(--text);">Factory</strong> &mdash; receives production order with 2-week delay</span>
+      </div>
+      <div style="display:flex; gap:.7rem; align-items:flex-start; font-size:.78rem; color:var(--muted);">
+        <span style="color:var(--success); font-family:var(--font-mono); font-weight:800; flex-shrink:0; min-width:22px;">&#10003;</span>
+        <span><strong style="color:var(--text);">End of week</strong> &mdash; each actor clicks <em>Ready for next week</em></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lobby Chat -->
+  <div class="card" style="padding:0;">
+    <div style="padding:.75rem 1rem .4rem; display:flex; align-items:center; gap:.4rem;">
+      <div class="card-title" style="margin:0;">&#128172; Lobby Chat</div>
+      <div style="font-size:.6rem; color:var(--muted2); margin-left:auto;">live</div>
+    </div>
+    <div class="chat-box">
+      <div class="chat-messages" id="chat-messages">
+        <div class="chat-empty" id="chat-empty">No messages yet. Say hello! &#128075;</div>
+      </div>
+      <div class="chat-input-row">
+        <input class="chat-input" id="chat-input" type="text" placeholder="Type a message..." maxlength="300" autocomplete="off" />
+        <button class="chat-send" id="chat-send" onclick="sendChat()">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Demo tip -->
+  <div style="background:rgba(59,130,246,.07); border:1px solid rgba(59,130,246,.2); border-radius:10px; padding:.85rem 1rem; font-size:.76rem; color:var(--muted);">
+    &#127919; <strong style="color:var(--text);">Demo:</strong> Click <strong style="color:var(--text);">&#8599; Open</strong> on each role to open tabs on one machine. QR codes let you play from other devices on the same network.
+  </div>
+</div>
+</div>
+
+<!-- Host Start Game Button -->
+{% if is_host %}
+<div style="text-align:center; margin-top:1.8rem;" id="host-start-wrap">
+  <button class="host-start-btn" id="host-start-btn" disabled onclick="startGame()">
+    &#128640; Start Game
+  </button>
+  <div style="font-size:.7rem; color:var(--muted); margin-top:.5rem;" id="host-start-hint">
+    At least 2 players must join before you can start
+  </div>
+</div>
+{% endif %}
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     SPECTATOR SECTION
+════════════════════════════════════════════════════════════════════════════ -->
+<div id="section-spectate">
+
+  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.75rem; margin-bottom:1rem;">
+    <div style="display:flex; align-items:center; gap:.55rem;">
+      <span class="live-dot"></span>
+      <span style="font-family:var(--font-mono); font-size:.78rem; color:var(--danger); font-weight:700;">LIVE</span>
+      <span style="font-size:.78rem; color:var(--muted);">Auto-refreshing every 3 s</span>
+    </div>
+    <div style="display:flex; gap:.5rem; flex-wrap:wrap;">
+      <a href="{% url 'results' session.id %}" class="btn btn-ghost btn-sm" id="btn-results" style="display:none;">&#128202; Results</a>
+      {% if is_host %}<a href="{% url 'instructor_view' session.id %}" class="btn btn-ghost btn-sm" id="btn-instructor">🎓 Instructor View</a>{% endif %}
+    </div>
+  </div>
+
+  <div style="margin-bottom:1.5rem;">
+    <div class="progress-bar"><div class="progress-fill" id="spec-progress" style="width:0%"></div></div>
+    <div style="display:flex; justify-content:space-between; font-size:.7rem; color:var(--muted); margin-top:.25rem;">
+      <span>Week 0</span><span id="spec-maxwk">Week {{ session.max_weeks }}</span>
+    </div>
+  </div>
+
+  <div id="demand-banner" style="display:none; background:rgba(245,200,66,.07); border:1px solid rgba(245,200,66,.25); border-radius:10px; padding:.7rem 1rem; margin-bottom:1.2rem; font-size:.82rem; color:var(--muted);">
+    <strong style="color:var(--text);">Customer demand this week:</strong>
+    <span id="demand-val" style="font-family:var(--font-mono); font-size:1.1rem; color:var(--accent); font-weight:800; margin-left:.4rem;">&mdash;</span> units
+  </div>
+
+  <div class="card" style="margin-bottom:1.5rem; padding:1.1rem 1.25rem;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:.9rem;">
+      <div class="card-title" style="margin:0;">Supply Chain Board</div>
+      <div style="font-size:.62rem; color:var(--muted); font-family:var(--font-mono);">
+        <span style="color:rgba(59,130,246,.8);">&#9632;</span> shipments &nbsp;
+        <span style="color:rgba(245,200,66,.8);">&#9632;</span> orders
+      </div>
+    </div>
+    <div style="overflow-x:auto; padding:.2rem 0;">
+      <div id="spec-chain"></div>
+    </div>
+  </div>
+
+  <div style="font-size:.68rem; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; margin-bottom:.6rem;">Player Summary</div>
+  <div class="spec-grid" id="spec-cards"></div>
+
+  <div id="finished-banner" style="display:none; text-align:center; margin-top:2rem; padding:1.5rem; background:rgba(245,200,66,.06); border:1px solid rgba(245,200,66,.25); border-radius:14px;">
+    <div style="font-family:var(--font-mono); font-size:1.1rem; color:var(--accent); font-weight:700;">Game Over!</div>
+    <div style="font-size:.82rem; color:var(--muted); margin:.4rem 0 1rem;">All weeks completed. Check the results for the final scores.</div>
+    <a href="{% url 'results' session.id %}" class="btn btn-primary">&#128202; View Results</a>
+  </div>
+
+</div>
+
+<div style="display:flex; gap:.75rem; justify-content:center; margin-top:2rem; padding-bottom:2rem;">
+  <a href="{% url 'home' %}" class="btn btn-ghost">&larr; Sessions</a>
+</div>
+
+<script>
+const SESSION_ID = {{ session.id }};
+const IS_HOST    = {{ is_host|yesno:"true,false" }};
+const CSRF_TOKEN = '{{ csrf_token }}';
+const ROLE_URLS  = {};
+document.querySelectorAll('[id^="pill-"]').forEach(function(el) {
+  var role = el.id.replace('pill-', '');
+  ROLE_URLS[role] = el.textContent.trim();
+});
+
+var EMOJIS = { customer:'\uD83D\uDC64', retailer:'\uD83D\uDED2', wholesaler:'\uD83C\uDFEA', distributor:'\uD83D\uDE9A', factory:'\uD83C\uDFED' };
+var ROLE_COLORS = { customer:'var(--muted)', retailer:'var(--retailer-color)', wholesaler:'var(--wholesaler-color)', distributor:'var(--distributor-color)', factory:'var(--factory-color)' };
+var VALID_COLORS = Object.keys(ROLE_COLORS).reduce(function(acc, k) { acc[ROLE_COLORS[k]] = true; return acc; }, {});
+var POLL_MS = 3000;
+
+var isGameLive = false;
+var lastChatId = 0;
+var previousJoined = [];
+var poll = setInterval(fetchStatus, POLL_MS);
+fetchStatus();
+
+var chatInput = document.getElementById('chat-input');
+if (chatInput) {
+  chatInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+  });
+}
+
+function fetchStatus() {
+  fetch('/game/' + SESSION_ID + '/lobby-status/')
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(d) { if (d) updateUI(d); })
+    .catch(function() {});
+}
+
+function updateUI(d) {
+  var joined    = d.joined    || [];
+  var connected = d.connected || [];
+
+  joined.forEach(function(role) {
+    if (previousJoined.indexOf(role) === -1 && d.names && d.names[role]) {
+      toast((EMOJIS[role] || '') + ' ' + d.names[role] + ' joined as ' + role, 'ok');
+      playJoinSound();
+    }
+  });
+  previousJoined = joined.slice();
+
+  var wb = document.getElementById('week-badge');
+  if (wb) wb.innerHTML = '<strong>' + d.current_week + '</strong> / ' + d.max_weeks + ' weeks';
+
+  var count = 0;
+  Object.keys(ROLE_URLS).forEach(function(role) {
+    var isIn = joined.indexOf(role) !== -1 || connected.indexOf(role) !== -1;
+    if (isIn) count++;
+    var card = document.getElementById('card-' + role);
+    if (card) { card.classList.toggle('joined', isIn); }
+    var dot = document.getElementById('dot-' + role);
+    if (dot) { dot.className = 'rc-dot ' + (isIn ? 'on' : 'off'); }
+    var tag  = document.getElementById('ntag-'  + role);
+    var nEl  = document.getElementById('ntext-' + role);
+    if (isIn && d.names && d.names[role]) {
+      if (nEl)  nEl.textContent = d.names[role];
+      if (tag)  tag.classList.add('show');
+    } else {
+      if (tag)  tag.classList.remove('show');
+    }
+    var orb = document.getElementById('orb-' + role);
+    if (orb) orb.className = 'orb ' + (isIn ? 'joined' : '');
+  });
+
+  var total = Object.keys(ROLE_URLS).length;
+  updateProgressRing(count, total);
+
+  if (IS_HOST) {
+    var btn  = document.getElementById('host-start-btn');
+    var hint = document.getElementById('host-start-hint');
+    if (btn) {
+      var canStart = count >= 2;
+      btn.disabled = !canStart;
+      if (hint) {
+        hint.textContent = canStart
+          ? count + ' / ' + total + ' players ready \u2014 you can start now!'
+          : 'At least 2 players must join before you can start (' + count + ' / ' + total + ')';
+        hint.style.color = canStart ? 'var(--success)' : 'var(--muted)';
+      }
+    }
+  }
+
+  var msg = document.getElementById('status-msg');
+
+  if (d.game_started || d.is_finished) {
+    if (!isGameLive) {
+      isGameLive = true;
+      document.getElementById('section-pregame').style.display = 'none';
+      var hostWrap = document.getElementById('host-start-wrap');
+      if (hostWrap) hostWrap.style.display = 'none';
+      document.getElementById('section-spectate').style.display = 'block';
+      document.getElementById('hdr-label').textContent = d.is_finished ? 'Game Over' : 'Spectator View';
+      document.getElementById('hdr-sub').textContent   = d.is_finished ? 'The game has ended' : 'Watching the game live';
+      clearInterval(poll);
+      poll = setInterval(fetchStatus, POLL_MS);
+    }
+
+    var pct = d.max_weeks > 0 ? Math.round(d.current_week / d.max_weeks * 100) : 0;
+    var pb = document.getElementById('spec-progress');
+    if (pb) pb.style.width = pct + '%';
+
+    if (msg) {
+      if (d.is_finished) { msg.textContent = '\uD83C\uDFC6 Game finished'; msg.style.color = 'var(--accent)'; }
+      else { msg.textContent = '\uD83D\uDCE1 Week ' + d.current_week + ' / ' + d.max_weeks + ' \u2014 live'; msg.style.color = 'var(--success)'; }
+    }
+
+    var demandBanner = document.getElementById('demand-banner');
+    var demandVal    = document.getElementById('demand-val');
+    if (d.last_demand !== null && d.last_demand !== undefined) {
+      if (demandBanner) demandBanner.style.display = 'block';
+      if (demandVal)    demandVal.textContent = d.last_demand;
+    }
+
+    var finBanner = document.getElementById('finished-banner');
+    var btnResults = document.getElementById('btn-results');
+    if (d.is_finished) {
+      if (finBanner)  finBanner.style.display  = 'block';
+      if (btnResults) btnResults.style.display = 'inline-flex';
+      clearInterval(poll);
+    }
+
+    renderSpecCards(d.players || []);
+    renderChain(d.players || [], d.pipeline || [], d.last_demand);
+  } else {
+    if (msg) {
+      if (count === 0) {
+        msg.innerHTML = 'Waiting for players<span class="waiting-dots"><span></span><span></span><span></span></span>';
+        msg.style.color = 'var(--muted)';
+      } else if (count < total) {
+        msg.textContent = count + ' / ' + total + ' players joined';
+        msg.style.color = 'var(--accent)';
+      } else {
+        msg.textContent = '\u2713 All players are here!';
+        msg.style.color = 'var(--success)';
+      }
+    }
+  }
+
+  updateChat(d.chat || []);
+}
+
+function updateProgressRing(count, total) {
+  var fg   = document.getElementById('progress-ring-fg');
+  var txt  = document.getElementById('progress-ring-text');
+  if (!fg || !txt) return;
+  var circumference = 2 * Math.PI * 20;
+  var pct = total > 0 ? count / total : 0;
+  fg.style.strokeDashoffset = circumference * (1 - pct);
+  if (pct >= 1) fg.style.stroke = 'var(--success)';
+  else if (pct > 0) fg.style.stroke = 'var(--accent)';
+  else fg.style.stroke = 'var(--border)';
+  txt.textContent = count + '/' + total;
+}
+
+function updateChat(messages) {
+  var container = document.getElementById('chat-messages');
+  var empty     = document.getElementById('chat-empty');
+  if (!container) return;
+  if (messages.length === 0) { if (empty) empty.style.display = 'block'; return; }
+  if (empty) empty.style.display = 'none';
+  var newMsgs = messages.filter(function(m) { return m.id > lastChatId; });
+  if (newMsgs.length === 0) return;
+  newMsgs.forEach(function(m) {
+    var div = document.createElement('div');
+    div.className = 'chat-msg';
+    var roleColor = ROLE_COLORS[m.role] || 'var(--muted)';
+    if (!VALID_COLORS[roleColor]) roleColor = 'var(--muted)';
+    div.innerHTML = '<span class="chat-msg-author" style="color:' + roleColor + ';">' + (EMOJIS[m.role] || '\uD83C\uDFAE') + ' ' + escapeHtml(m.author) + '</span> <span class="chat-msg-body">' + escapeHtml(m.body) + '</span><span class="chat-msg-time">' + m.time + '</span>';
+    container.appendChild(div);
+    lastChatId = Math.max(lastChatId, m.id);
+  });
+  container.scrollTop = container.scrollHeight;
+}
+
+function escapeHtml(str) {
+  var div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function sendChat() {
+  var input = document.getElementById('chat-input');
+  var body  = (input.value || '').trim();
+  if (!body) return;
+  input.value = '';
+  var fd = new FormData();
+  fd.append('body', body);
+  fetch('/game/' + SESSION_ID + '/lobby-chat/', {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF_TOKEN },
+    body: fd,
+  }).then(function() { fetchStatus(); }).catch(function() {});
+}
+
+function startGame() {
+  var btn = document.getElementById('host-start-btn');
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  btn.textContent = '\u23F3 Starting\u2026';
+  fetch('/game/' + SESSION_ID + '/lobby-start/', {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF_TOKEN },
+  }).then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok) {
+        showCountdown(function() { fetchStatus(); });
+      } else {
+        toast(d.error || 'Failed to start', '');
+        btn.disabled = false;
+        btn.textContent = '\uD83D\uDE80 Start Game';
+      }
+    }).catch(function() {
+      toast('Network error', '');
+      btn.disabled = false;
+      btn.textContent = '\uD83D\uDE80 Start Game';
+    });
+}
+
+function showCountdown(callback) {
+  var overlay = document.getElementById('countdown-overlay');
+  var numEl   = document.getElementById('countdown-number');
+  if (!overlay || !numEl) { callback(); return; }
+  overlay.classList.add('active');
+  var count = 3;
+  numEl.textContent = count;
+  var interval = setInterval(function() {
+    count--;
+    if (count > 0) { numEl.textContent = count; }
+    else {
+      clearInterval(interval);
+      numEl.textContent = '\uD83D\uDE80';
+      setTimeout(function() { overlay.classList.remove('active'); callback(); }, 600);
+    }
+  }, 800);
+}
+
+var _audioCtx = null;
+function getAudioCtx() {
+  if (!_audioCtx) {
+    try { _audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+  }
+  return _audioCtx;
+}
+
+function playJoinSound() {
+  try {
+    var ctx = getAudioCtx();
+    if (!ctx) return;
+    var osc = ctx.createOscillator();
+    var gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.08);
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.25);
+  } catch(e) {}
+}
+
+function renderSpecCards(players) {
+  var container = document.getElementById('spec-cards');
+  if (!container) return;
+  container.innerHTML = '';
+  if (!players.length) return;
+  players.forEach(function(p) {
+    var invClass = p.inventory > 6 ? 'inv-good' : p.inventory > 0 ? 'inv-warn' : 'inv-bad';
+    var invVal   = p.inventory > 6 ? 'good'     : p.inventory > 0 ? 'warn'     : 'bad';
+    var blkVal   = p.backlog === 0  ? 'good'     : p.backlog < 5   ? 'warn'     : 'bad';
+    container.innerHTML += '<div class="spec-card ' + invClass + '">'
+      + '<div class="spec-role">' + (EMOJIS[p.role] || '') + ' <span class="role-badge role-' + p.role + '">' + p.role + '</span></div>'
+      + '<div class="spec-name">' + (p.name || '\u2014') + '</div>'
+      + '<div class="spec-stat"><span class="spec-stat-lbl">Inventory</span><span class="spec-stat-val ' + invVal + '">' + p.inventory + '</span></div>'
+      + '<div class="spec-stat"><span class="spec-stat-lbl">Backlog</span><span class="spec-stat-val ' + blkVal + '">' + p.backlog + '</span></div>'
+      + '<div class="spec-stat"><span class="spec-stat-lbl">Total Cost</span><span class="spec-stat-val warn">$' + p.total_cost + '</span></div>'
+      + '<div class="spec-stat"><span class="spec-stat-lbl">Last Order</span><span class="spec-stat-val">' + p.order_placed + '</span></div>'
+      + '</div>';
+  });
+}
+
+function renderChain(players, pipeline, lastDemand) {
+  var container = document.getElementById('spec-chain');
+  if (!container) return;
+  if (!players || !players.length) {
+    container.innerHTML = '<div style="font-size:.75rem;color:var(--muted);padding:.4rem 0;">Waiting for players to populate the board...</div>';
+    return;
+  }
+  var PRE = { retailer:'rt', wholesaler:'wh', distributor:'di', factory:'fa' };
+  var ships = {}, orders = {};
+  (pipeline || []).forEach(function(item) {
+    var toKey   = PRE[item.to]   || item.to.slice(0,2);
+    var fromKey = PRE[item.from] || item.from.slice(0,2);
+    if (item.type !== 'order') {
+      if (!ships[toKey]) ships[toKey] = [];
+      ships[toKey].push(item);
+    } else {
+      if (!orders[fromKey]) orders[fromKey] = [];
+      orders[fromKey].push(item);
+    }
+  });
+
+  function slotPair(items, cls) {
+    var sorted = (items || []).slice().sort(function(a, b) {
+      return (a.weeks_away || 0) - (b.weeks_away || 0);
+    });
+    var slots = [sorted[0] || null, sorted[1] || null];
+    return slots.map(function(it) {
+      var val = it ? it.qty : '\u00B7';
+      var arCls = it && it.weeks_away === 0 ? ' arriving' : '';
+      var activeCls = it ? (' ' + cls) : '';
+      return '<div class="bgb-slot' + activeCls + arCls + '"><span class="bgb-v">' + val + '</span></div>';
+    }).join('');
+  }
+
+  var playerMap = {};
+  (players || []).forEach(function(p) { playerMap[p.role] = p; });
+
+  function invBox(role) {
+    var p = playerMap[role];
+    if (!p) return '<div class="bgb-inv-box"><div class="bgb-inv-val good">\u2014</div><div class="bgb-backlog zero">blg:0</div></div>';
+    var inv = p.inventory, blg = p.backlog;
+    var cls = inv > 6 ? 'good' : inv > 0 ? 'warn' : 'bad';
+    var color = inv > 8 ? '#22c55e' : inv > 0 ? '#f5c842' : '#ef4444';
+    var pct = Math.min(100, Math.max(0, Math.round(inv / 40 * 100)));
+    var blgCls = blg > 0 ? '' : ' zero';
+    return '<div class="bgb-inv-box"><div class="bgb-inv-healthbar" style="width:' + pct + '%;background:' + color + ';"></div><div class="bgb-inv-val ' + cls + '">' + inv + '</div><div class="bgb-backlog' + blgCls + '">blg:' + blg + '</div></div>';
+  }
+
+  var demandTxt = lastDemand !== null && lastDemand !== undefined ? lastDemand : '\u2014';
+  var demandCls = lastDemand != null ? 'amber arriving' : 'amber';
+
+  var html = '<div class="road-board">';
+
+  html += '<div class="road-node" style="border-color:rgba(107,114,128,.25);">'
+    + '<div class="road-node-hdr" style="background:rgba(107,114,128,.12);border-bottom:2px solid rgba(107,114,128,.3);color:var(--muted);">Customer</div>'
+    + '<div class="road-node-body" style="justify-content:center;">'
+    + '<div style="font-size:.45rem;color:var(--muted);text-transform:uppercase;">demand</div>'
+    + '<div class="bgb-slot ' + demandCls + '" style="width:68px;min-height:52px;"><span class="bgb-v">' + demandTxt + '</span></div>'
+    + '</div></div>';
+
+  html += '<div class="road-seg" style="flex:0.3;min-width:24px;">'
+    + '<div class="road-orders-row"></div>'
+    + '<div class="road-surface" style="padding:0;justify-content:center;"><div class="road-flow-dir"><span class="rfd amber">\u2190</span></div></div>'
+    + '<div class="road-seg-labels"></div></div>';
+
+  var ROLES_SEG = [
+    { role:'retailer',    label:'Retailer',    pre:'rt', hdrStyle:'background:rgba(245,200,66,.1);border-bottom:2px solid rgba(245,200,66,.65);color:#ffd36a;' },
+    { role:'wholesaler',  label:'Wholesaler',  pre:'wh', hdrStyle:'background:rgba(59,130,246,.1);border-bottom:2px solid rgba(59,130,246,.65);color:#8ecbff;' },
+    { role:'distributor', label:'Distributor',  pre:'di', hdrStyle:'background:rgba(168,85,247,.1);border-bottom:2px solid rgba(168,85,247,.65);color:#d8a4ff;' },
+    { role:'factory',     label:'Factory',      pre:'fa', hdrStyle:'background:rgba(34,197,94,.1);border-bottom:2px solid rgba(34,197,94,.65);color:#4ade80;' },
+  ];
+
+  ROLES_SEG.forEach(function(seg, idx) {
+    html += '<div class="road-node">'
+      + '<div class="road-node-hdr" style="' + seg.hdrStyle + '">' + seg.label + '</div>'
+      + '<div class="road-node-body">' + invBox(seg.role) + '</div>'
+      + '</div>';
+
+    if (idx < ROLES_SEG.length - 1) {
+      html += '<div class="road-seg">'
+        + '<div class="road-orders-row">' + slotPair(ships[seg.pre], 'blue') + '</div>'
+        + '<div class="road-surface">' + slotPair(orders[seg.pre], 'amber')
+        + '<div class="road-flow-dir"><span class="rfd blue">\u2190</span><span class="rfd amber">\u2192</span></div></div>'
+        + '<div class="road-seg-labels"><span class="road-seg-lbl blue">\u25C2 ships</span><span class="road-seg-lbl amber">orders \u25B8</span></div>'
+        + '</div>';
+    }
+  });
+
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function doCopy(btn) {
+  var url = btn.dataset.url, role = btn.dataset.role;
+  if (!url) return;
+  function doIt() {
+    btn.textContent = '\u2713 Copied!'; btn.classList.add('copied');
+    setTimeout(function() { btn.textContent = '\uD83D\uDCCB Copy'; btn.classList.remove('copied'); }, 2200);
+    toast('Link copied \u2014 ' + role, 'ok');
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(doIt).catch(function() { fallbackCopy(url, doIt); });
+  } else { fallbackCopy(url, doIt); }
+}
+
+function doCopyAll() {
+  var allLinks = Object.keys(ROLE_URLS).map(function(role) { return role + ': ' + ROLE_URLS[role]; }).join('\n');
+  var btn = document.getElementById('copy-all-btn');
+  function doIt() {
+    if (btn) { btn.textContent = '\u2713 All Copied!'; btn.classList.add('copied'); }
+    setTimeout(function() { if (btn) { btn.textContent = '\uD83D\uDCCB Copy All Links'; btn.classList.remove('copied'); } }, 2200);
+    toast('All links copied to clipboard', 'ok');
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(allLinks).then(doIt).catch(function() { fallbackCopy(allLinks, doIt); });
+  } else { fallbackCopy(allLinks, doIt); }
+}
+
+function fallbackCopy(text, cb) {
+  var ta = document.createElement('textarea');
+  ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+  document.body.appendChild(ta); ta.focus(); ta.select();
+  try { document.execCommand('copy'); cb(); } catch(e) {}
+  document.body.removeChild(ta);
+}
+
+var qrInst = null;
+function doQR(btn) {
+  var url = btn.dataset.url, role = btn.dataset.role;
+  var el = document.getElementById('qr-el'), ov = document.getElementById('qr-ov');
+  el.innerHTML = '';
+  if (qrInst) { try { qrInst.clear(); } catch(e){} qrInst = null; }
+  document.getElementById('qr-title').textContent = role.charAt(0).toUpperCase() + role.slice(1) + ' \u2014 Scan to join';
+  ov.classList.add('open');
+  qrInst = new QRCode(el, { text:url, width:200, height:200, colorDark:'#0d0f14', colorLight:'#fff', correctLevel:QRCode.CorrectLevel.M });
+}
+function closeQR() { document.getElementById('qr-ov').classList.remove('open'); }
+
+function toast(msg, type) {
+  type = type || '';
+  var c = document.getElementById('tcont');
+  if (!c) return;
+  var d = document.createElement('div');
+  d.className = 't ' + type; d.textContent = msg;
+  c.appendChild(d);
+  setTimeout(function() { d.remove(); }, 3500);
+}
+</script>
+{% endblock %}

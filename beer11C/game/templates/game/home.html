@@ -1,0 +1,597 @@
+{% extends "game/base.html" %}
+{% block title %}Beer Game — Sessions{% endblock %}
+
+{% block extra_head %}
+<style>
+/* ── Hero ─────────────────────────────────────────────────────────────────── */
+.hero {
+  text-align: center;
+  padding: 3.5rem 1rem 2.5rem;
+  position: relative;
+}
+.hero-eyebrow {
+  font-family: var(--font-mono);
+  font-size: .68rem;
+  letter-spacing: .28em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: .85rem;
+}
+.hero-title {
+  font-family: var(--font-mono);
+  font-size: clamp(2.4rem, 6vw, 4rem);
+  font-weight: 700;
+  letter-spacing: -.02em;
+  line-height: 1.05;
+  margin-bottom: .75rem;
+}
+.hero-title .accent {
+  color: var(--accent);
+  text-shadow: 0 0 32px var(--accent-glow);
+}
+.hero-sub {
+  color: var(--muted);
+  font-size: .95rem;
+  max-width: 460px;
+  margin: 0 auto 2rem;
+  line-height: 1.7;
+}
+
+/* ── Action cards ─────────────────────────────────────────────────────────── */
+.action-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  max-width: 640px;
+  margin: 0 auto 3rem;
+}
+@media (max-width: 560px) { .action-grid { grid-template-columns: 1fr; } }
+
+.action-card {
+  border: 2px solid var(--border);
+  border-radius: 18px;
+  padding: 1.75rem 1.5rem;
+  cursor: pointer;
+  transition: border-color .2s, transform .18s cubic-bezier(.4,0,.2,1), box-shadow .2s;
+  background: var(--surface);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.action-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  opacity: 0; transition: opacity .25s;
+  pointer-events: none;
+}
+.action-card::after {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  transition: opacity .25s;
+}
+.action-card.create::before { background: radial-gradient(circle at 50% 0%, rgba(245,200,66,.08), transparent 70%); }
+.action-card.create::after  { background: linear-gradient(90deg, transparent, rgba(245,200,66,.5), transparent); opacity: 0; }
+.action-card.join::before   { background: radial-gradient(circle at 50% 0%, rgba(59,130,246,.08),  transparent 70%); }
+.action-card.join::after    { background: linear-gradient(90deg, transparent, rgba(59,130,246,.5),  transparent); opacity: 0; }
+
+.action-card:hover { transform: translateY(-4px); box-shadow: 0 16px 40px rgba(0,0,0,.4); }
+.action-card:hover::before { opacity: 1; }
+.action-card:hover::after  { opacity: 1; }
+.action-card.create:hover { border-color: rgba(245,200,66,.5); }
+.action-card.join:hover   { border-color: rgba(59,130,246,.5); }
+
+.action-icon  { font-size: 2.5rem; margin-bottom: .75rem; line-height: 1; }
+.action-title { font-family: var(--font-mono); font-size: 1rem; font-weight: 700; margin-bottom: .35rem; }
+.action-desc  { font-size: .77rem; color: var(--muted); line-height: 1.5; }
+.action-badge {
+  display: inline-block;
+  font-size: .62rem;
+  font-weight: 700;
+  padding: .14rem .5rem;
+  border-radius: 999px;
+  margin-top: .65rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.badge-new  { background: rgba(245,200,66,.14); color: var(--accent); border: 1px solid rgba(245,200,66,.3); }
+.badge-join { background: rgba(59,130,246,.14);  color: #60a5fa;       border: 1px solid rgba(59,130,246,.3); }
+
+/* ── Join-by-code input ───────────────────────────────────────────────────── */
+.join-panel {
+  display: none;
+  max-width: 480px;
+  margin: 0 auto 2rem;
+  background: var(--surface);
+  border: 1px solid rgba(59,130,246,.35);
+  border-radius: 16px;
+  padding: 1.5rem;
+  animation: slideDown .22s ease;
+}
+.join-panel.open { display: block; }
+@keyframes slideDown { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:none} }
+
+/* ── Create panel ─────────────────────────────────────────────────────────── */
+.create-panel {
+  display: none;
+  max-width: 580px;
+  margin: 0 auto 2.5rem;
+  animation: slideDown .22s ease;
+}
+.create-panel.open { display: block; }
+
+/* ── Stats bar ────────────────────────────────────────────────────────────── */
+.stats-bar {
+  display: flex;
+  gap: 0;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 2.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  max-width: 560px;
+  margin-left: auto; margin-right: auto;
+}
+.stat-item {
+  text-align: center;
+  flex: 1;
+  padding: .9rem 1rem;
+  position: relative;
+}
+.stat-item + .stat-item::before {
+  content: ''; position: absolute; left: 0; top: 20%; bottom: 20%;
+  width: 1px; background: var(--border);
+}
+.stat-num  { font-family: var(--font-mono); font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+.stat-lbl  { font-size: .65rem; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; margin-top: .15rem; }
+
+/* ── Live games list ──────────────────────────────────────────────────────── */
+.section-title {
+  font-family: var(--font-mono);
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  color: var(--muted);
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+}
+.section-title::after {
+  content: ''; flex: 1; height: 1px; background: var(--border);
+}
+
+.game-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  transition: border-color .18s, background .18s, transform .15s;
+  margin-bottom: .6rem;
+  position: relative;
+  overflow: hidden;
+}
+.game-card::before {
+  content: '';
+  position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  border-radius: 14px 0 0 14px;
+  background: var(--border);
+  transition: background .2s;
+}
+.game-card:hover { border-color: rgba(245,200,66,.22); transform: translateX(2px); }
+.game-card:hover::before { background: var(--accent); }
+.game-card.lobby:hover::before { background: var(--accent); }
+.game-card.playing:hover::before { background: var(--success); }
+.game-card.finished:hover::before { background: var(--muted); }
+
+.game-status-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+}
+.dot-lobby    { background: #f5c842; box-shadow: 0 0 6px #f5c842; animation: blink 2.2s infinite; }
+.dot-playing  { background: var(--success); box-shadow: 0 0 6px var(--success); }
+.dot-finished { background: var(--muted2); }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+.game-info { flex: 1; min-width: 0; }
+.game-name { font-family: var(--font-mono); font-size: .88rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.game-meta { font-size: .7rem; color: var(--muted); margin-top: .12rem; }
+
+.game-slots {
+  display: flex; gap: .28rem; align-items: center;
+}
+.slot-pip {
+  width: 24px; height: 24px; border-radius: 7px;
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: .65rem;
+  transition: all .18s;
+}
+.slot-pip.filled { border-color: rgba(34,197,94,.4); background: rgba(34,197,94,.1); }
+.slot-pip.empty  { opacity: .35; }
+
+.week-prog {
+  display: flex; align-items: center; gap: .5rem;
+  min-width: 100px;
+}
+.prog-bar { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.prog-fill { height: 100%; background: linear-gradient(90deg, var(--accent), #fdd835); border-radius: 2px; transition: width .4s; }
+.week-label { font-size: .65rem; font-family: var(--font-mono); color: var(--muted); white-space: nowrap; }
+
+/* ── Mode selector (in create panel) ──────────────────────────────────────── */
+.mode-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: .65rem; margin-bottom: 1rem;
+}
+.mode-opt {
+  border: 2px solid var(--border); border-radius: 12px;
+  padding: .9rem; text-align: center; cursor: pointer; transition: all .18s;
+  position: relative; overflow: hidden;
+}
+.mode-opt.selected { border-color: var(--accent); background: rgba(245,200,66,.05); box-shadow: 0 0 0 1px rgba(245,200,66,.15); }
+.mode-opt-icon  { font-size: 1.5rem; }
+.mode-opt-title { font-weight: 700; font-size: .87rem; margin-top: .25rem; }
+.mode-opt-desc  { font-size: .68rem; color: var(--muted); margin-top: .15rem; }
+
+/* ── Delete dialog ────────────────────────────────────────────────────────── */
+.del-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(10,12,17,.88); backdrop-filter: blur(6px);
+  z-index: 500; align-items: center; justify-content: center;
+}
+.del-overlay.open { display: flex; }
+.del-box {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 18px; padding: 2rem 1.75rem; max-width: 380px; width: 90%;
+  text-align: center; animation: fadeUp .25s ease both;
+  box-shadow: var(--shadow-lg);
+}
+
+/* ── Delete button (ghost icon) ─────────────────────────────────────────── */
+.del-btn {
+  background: none; border: none; cursor: pointer;
+  padding: .3rem .45rem; border-radius: 8px;
+  color: var(--muted2); font-size: .9rem;
+  transition: color .15s, background .15s;
+}
+.del-btn:hover { color: var(--danger); background: var(--danger-dim); }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Delete confirm -->
+<div class="del-overlay" id="del-dialog">
+  <div class="del-box">
+    <div style="margin-bottom:.5rem;"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="#ef4444" stroke-width="1.8" stroke-linecap="round"/><path d="M10 11v6M14 11v6" stroke="#ef4444" stroke-width="1.8" stroke-linecap="round" opacity="0.6"/></svg></div>
+    <h3 style="font-family:var(--font-mono); font-size:1rem; margin-bottom:.4rem;">Supprimer la partie ?</h3>
+    <p style="color:var(--muted); font-size:.82rem; margin-bottom:1.25rem;" id="del-name"></p>
+    <div style="display:flex; gap:.75rem; justify-content:center;">
+      <form method="POST" id="del-form">{% csrf_token %}
+        <button type="submit" class="btn btn-danger" style="padding:.55rem 1.4rem;">Supprimer</button>
+      </form>
+      <button class="btn btn-ghost" onclick="closeDel()">Annuler</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Hero ───────────────────────────────────────────────────────────────── -->
+<div class="hero">
+  <div class="hero-eyebrow">MIT Supply Chain Simulation</div>
+  <h1 class="hero-title">THE <span class="accent">BEER</span> GAME</h1>
+  <p class="hero-sub">
+    Simulation multijoueur en temps réel de gestion de la chaîne d'approvisionnement.
+    Gérez les stocks, passez des commandes, et découvrez l'effet coup de fouet.
+  </p>
+
+  <!-- Action cards -->
+  <div class="action-grid">
+    <div class="action-card create" onclick="toggleCreate()">
+      <div class="action-icon"><svg width="40" height="40" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24 6C24 6 14 18 14 28a10 10 0 0020 0C34 18 24 6 24 6z" fill="#f5c842" opacity="0.85"/><ellipse cx="24" cy="28" rx="5" ry="5" fill="#0a0c11" opacity="0.6"/><path d="M16 38l-5 4" stroke="#f5c842" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/><path d="M32 38l5 4" stroke="#f5c842" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/><path d="M24 6V3" stroke="#f5c842" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/></svg></div>
+      <div class="action-title">Créer une partie</div>
+      <div class="action-desc">Configurez et lancez une nouvelle session. Invitez vos joueurs.</div>
+      <div class="action-badge badge-new">Nouvelle</div>
+    </div>
+    <div class="action-card join" onclick="toggleJoin()">
+      <div class="action-icon"><svg width="40" height="40" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="24" r="8" stroke="#3b82f6" stroke-width="2.5" fill="none" opacity="0.85"/><circle cx="32" cy="24" r="8" stroke="#3b82f6" stroke-width="2.5" fill="rgba(59,130,246,.12)" opacity="0.85"/><path d="M20 18 Q24 14 28 18" stroke="#3b82f6" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.55"/><path d="M20 30 Q24 34 28 30" stroke="#3b82f6" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.55"/></svg></div>
+      <div class="action-title">Rejoindre</div>
+      <div class="action-desc">Entrez un code ou utilisez le lien d'invitation reçu.</div>
+      <div class="action-badge badge-join">Via lien</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Join-by-code panel ─────────────────────────────────────────────────── -->
+<div class="join-panel" id="join-panel">
+    <div style="font-family:var(--font-mono); font-size:.8rem; color:var(--accent); margin-bottom:.75rem; text-transform:uppercase; letter-spacing:.1em;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><circle cx="12" cy="14" r="8" stroke="currentColor" stroke-width="2" fill="none" opacity="0.6"/><path d="M12 14V6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 2V0M12 2l2-1M12 2l-2-1" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.7"/><path d="M8 17l8-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.35"/></svg> Rejoindre via lien</div>
+  <p style="font-size:.82rem; color:var(--muted); margin-bottom:1rem;">
+    Collez le lien d'invitation complet reçu de l'organisateur, ou choisissez une partie ouverte ci-dessous.
+  </p>
+  <div style="display:flex; gap:.6rem;">
+    <input type="url" id="join-url-input" placeholder="https://… ou /join/token/"
+           style="flex:1; padding:.65rem .9rem; border-radius:8px; font-size:.88rem;"
+           onkeydown="if(event.key==='Enter') doJoinUrl()" />
+    <button class="btn btn-primary" onclick="doJoinUrl()">Rejoindre →</button>
+  </div>
+  <div id="join-error" style="color:var(--danger); font-size:.76rem; margin-top:.5rem; display:none;"></div>
+</div>
+
+<!-- ── Create panel ───────────────────────────────────────────────────────── -->
+<div class="create-panel" id="create-panel">
+  <div class="card">
+    <div style="font-family:var(--font-mono); font-size:.8rem; color:var(--accent); margin-bottom:1.25rem; text-transform:uppercase; letter-spacing:.1em;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><path d="M12 4C12 4 6 11 6 16a6 6 0 0012 0C18 11 12 4 12 4z" fill="currentColor" opacity="0.7"/><circle cx="12" cy="16" r="2" fill="currentColor" opacity="0.4"/></svg> Nouvelle partie</div>
+    <form method="POST" action="{% url 'new_game' %}">
+      {% csrf_token %}
+
+      <div style="margin-bottom:1rem;">
+        <label style="display:block; font-size:.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem;">Nom de la session</label>
+        <input type="text" name="name"
+               value="{{ user.first_name|default:user.username }}'s Game"
+               placeholder="Beer Game #1"
+               style="font-size:.9rem; padding:.65rem .9rem;" />
+      </div>
+
+      <div style="margin-bottom:1rem;">
+        <label style="display:block; font-size:.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:.5rem;">Mode de jeu</label>
+        <div class="mode-grid">
+          <div class="mode-opt selected" id="card-single" onclick="selectMode('single')">
+            <div class="mode-opt-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="10" r="3" fill="currentColor" opacity="0.4"/></svg></div>
+            <div class="mode-opt-title">Solo</div>
+            <div class="mode-opt-desc">Vous contrôlez les 4 rôles</div>
+          </div>
+          <div class="mode-opt" id="card-multi" onclick="selectMode('multi')">
+            <div class="mode-opt-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="9" r="3.5" stroke="currentColor" stroke-width="1.8" fill="none"/><circle cx="16" cy="9" r="3.5" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M2 20c0-3.3 2.7-6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none" opacity="0.5"/><path d="M22 20c0-3.3-2.7-6-6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none" opacity="0.5"/><path d="M8 14c0-3.3 2.7-6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none" opacity="0.7"/></svg></div>
+            <div class="mode-opt-title">Multijoueur</div>
+            <div class="mode-opt-desc">5 joueurs en temps réel</div>
+          </div>
+        </div>
+        <input type="hidden" name="mode" id="mode-input" value="single" />
+      </div>
+
+      <div style="margin-bottom:1.25rem;">
+        <label style="display:block; font-size:.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:.4rem;">Nombre de semaines</label>
+        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:.5rem;">
+          {% for w,label in weeks_options %}
+          <label style="cursor:pointer;">
+            <input type="radio" name="max_weeks" value="{{ w }}" {% if w == 20 %}checked{% endif %} style="display:none;" class="weeks-radio" />
+            <div class="weeks-btn" data-val="{{ w }}">
+              <div style="font-family:var(--font-mono); font-size:1rem; font-weight:700;">{{ w }}</div>
+              <div style="font-size:.65rem; color:var(--muted); margin-top:.1rem;">{{ label }}</div>
+            </div>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div style="background:rgba(245,200,66,.06); border:1px solid rgba(245,200,66,.18); border-radius:8px; padding:.75rem; margin-bottom:1.25rem; font-size:.76rem; color:var(--muted);">
+        Stock initial: <strong style="color:var(--text);">12 unités</strong> &nbsp;·&nbsp;
+        Délais: <strong style="color:var(--text);">2 semaines</strong> &nbsp;·&nbsp;
+        Stockage: <strong style="color:var(--text);">0.50$/u/sem</strong> &nbsp;·&nbsp;
+        Rupture: <strong style="color:var(--text);">1.00$/u/sem</strong>
+      </div>
+
+      <div style="display:flex; gap:.65rem;">
+        <button type="submit" class="btn btn-primary" style="flex:1; justify-content:center; font-size:.95rem; padding:.75rem;">
+          🚀 Lancer la partie
+        </button>
+        <button type="button" class="btn btn-ghost" onclick="closeCreate()">✕</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Stats bar ──────────────────────────────────────────────────────────── -->
+<div class="stats-bar">
+  <div class="stat-item">
+    <div class="stat-num">{{ stats.total }}</div>
+    <div class="stat-lbl">Parties totales</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-num" style="color:var(--success);">{{ stats.active }}</div>
+    <div class="stat-lbl">En cours</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-num" style="color:#f5c842;">{{ stats.lobby }}</div>
+    <div class="stat-lbl">En attente</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-num" style="color:var(--muted);">{{ stats.finished }}</div>
+    <div class="stat-lbl">Terminées</div>
+  </div>
+</div>
+
+<!-- ── Live sessions ──────────────────────────────────────────────────────── -->
+{% if lobby_sessions %}
+<div style="margin-bottom:2.5rem;">
+  <div class="section-title"><span style="display:inline-flex;align-items:center;gap:.35rem;"><span style="width:7px;height:7px;border-radius:50%;background:#f5c842;box-shadow:0 0 6px #f5c842;animation:blink 2.2s infinite;display:inline-block;"></span>Parties ouvertes — rejoindre maintenant</span></div>
+  {% for s in lobby_sessions %}
+  <div class="game-card">
+    <div class="game-status-dot dot-lobby"></div>
+    <div class="game-info">
+      <div class="game-name">{{ s.name }}</div>
+      <div class="game-meta">{{ s.max_weeks }} semaines · Lobby · {{ s.player_sessions.count }}/5 joueurs</div>
+    </div>
+    <div class="game-slots">
+      {% for ps in s.player_sessions.all %}
+      <div class="slot-pip {% if ps.name %}filled{% else %}empty{% endif %}" title="{{ ps.role|title }}">
+        {% if ps.role == 'customer' %}<svg width="11" height="11" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4.5" fill="currentColor" opacity="0.9"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.7"/></svg>{% elif ps.role == 'retailer' %}<svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M3 10l1-6h16l1 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M3 10v10a2 2 0 002 2h14a2 2 0 002-2V10" stroke="currentColor" stroke-width="2" fill="none"/></svg>{% elif ps.role == 'wholesaler' %}<svg width="11" height="11" viewBox="0 0 24 24" fill="none"><rect x="2" y="6" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><rect x="6" y="2" width="12" height="4" rx="1" fill="currentColor" opacity="0.5"/></svg>{% elif ps.role == 'distributor' %}<svg width="11" height="11" viewBox="0 0 24 24" fill="none"><rect x="1" y="6" width="15" height="10" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M16 9h4l3 4v3h-7V9z" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="6.5" cy="17.5" r="2" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="19" cy="17.5" r="2" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>{% else %}<svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M2 20V10l5-4v4l5-4v4l5-4v10" stroke="currentColor" stroke-width="2" fill="none"/><rect x="2" y="16" width="20" height="6" rx="1" fill="currentColor" opacity="0.3"/></svg>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <div style="display:flex; gap:.4rem; flex-shrink:0;">
+      <a href="{% if s.public_join_token %}{% url 'join_game' s.public_join_token %}{% else %}{% url 'lobby' s.id %}{% endif %}" class="btn btn-primary btn-sm" style="font-size:.78rem; padding:.35rem .9rem;">
+        Rejoindre →
+      </a>
+      {% if request.user.is_staff %}
+      <button class="del-btn" onclick="openDel({{ s.id }}, '{{ s.name|escapejs }}')" title="Supprimer">🗑️</button>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if active_sessions %}
+<div style="margin-bottom:2.5rem;">
+  <div class="section-title"><span style="display:inline-flex;align-items:center;gap:.35rem;"><span style="width:7px;height:7px;border-radius:50%;background:var(--success);box-shadow:0 0 6px var(--success);display:inline-block;"></span>Parties en cours</span></div>
+  {% for s in active_sessions %}
+  <div class="game-card">
+    <div class="game-status-dot dot-playing"></div>
+    <div class="game-info">
+      <div class="game-name">{{ s.name }}</div>
+      <div class="game-meta">Semaine {{ s.current_week }}/{{ s.max_weeks }} · Multijoueur</div>
+    </div>
+    <div class="week-prog">
+      <div class="prog-bar"><div class="prog-fill" style="width:{% widthratio s.current_week s.max_weeks 100 %}%;"></div></div>
+      <span class="week-label">W{{ s.current_week }}</span>
+    </div>
+    <div style="display:flex; gap:.4rem; flex-shrink:0;">
+      <a href="{% url 'dashboard' s.id %}" class="btn btn-ghost btn-sm" style="font-size:.78rem;">Voir</a>
+      {% if request.user.is_staff %}
+      <button class="del-btn" onclick="openDel({{ s.id }}, '{{ s.name|escapejs }}')" title="Supprimer">🗑️</button>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if my_sessions %}
+<div style="margin-bottom:2.5rem;">
+  <div class="section-title"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;opacity:.7;"><path d="M4 20V7l8-4 8 4v13" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><rect x="9" y="12" width="6" height="8" rx="1" fill="currentColor" opacity="0.4"/></svg> Mes parties</div>
+  {% for s in my_sessions %}
+  <div class="game-card">
+    <div class="game-status-dot {% if s.status == 'lobby' %}dot-lobby{% elif s.is_active %}dot-playing{% else %}dot-finished{% endif %}"></div>
+    <div class="game-info">
+      <div class="game-name">{{ s.name }}</div>
+      <div class="game-meta">
+        {% if s.player_sessions.exists %}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;opacity:.6;"><circle cx="8" cy="9" r="3.5" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="16" cy="9" r="3.5" stroke="currentColor" stroke-width="2" fill="none"/></svg> Multi{% else %}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;opacity:.6;"><rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 17v4M8 21h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> Solo{% endif %}
+        · {{ s.current_week }}/{{ s.max_weeks }} sem.
+        · {{ s.created_at|timesince }} ago
+      </div>
+    </div>
+    <div class="week-prog">
+      <div class="prog-bar"><div class="prog-fill" style="width:{% widthratio s.current_week s.max_weeks 100 %}%;"></div></div>
+      <span class="week-label">W{{ s.current_week }}</span>
+    </div>
+    <div style="display:flex; gap:.4rem; flex-shrink:0;">
+      {% if s.status == 'lobby' %}
+        <a href="{% url 'lobby' s.id %}" class="btn btn-primary btn-sm" style="font-size:.78rem;">Lobby</a>
+      {% elif s.is_active %}
+        <a href="{% url 'dashboard' s.id %}" class="btn btn-ghost btn-sm" style="font-size:.78rem;">Reprendre</a>
+      {% else %}
+        <a href="{% url 'results' s.id %}" class="btn btn-ghost btn-sm" style="font-size:.78rem;">Résultats</a>
+      {% endif %}
+      <button class="del-btn" onclick="openDel({{ s.id }}, '{{ s.name|escapejs }}')" title="Supprimer">🗑️</button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if not lobby_sessions and not active_sessions and not my_sessions %}
+<div style="text-align:center; color:var(--muted); padding:3.5rem 1rem;">
+  <div style="font-size:3.5rem; margin-bottom:1rem; filter:drop-shadow(0 0 16px rgba(245,200,66,.25));"><svg width="56" height="56" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="8" width="18" height="19" rx="3" fill="#f5c842" opacity="0.9"/><ellipse cx="13" cy="8" rx="9" ry="3.5" fill="#fff" opacity="0.85"/><ellipse cx="9" cy="6.8" rx="3.5" ry="3" fill="#fff" opacity="0.8"/><ellipse cx="15" cy="6" rx="3" ry="2.8" fill="#fff" opacity="0.75"/><ellipse cx="20" cy="7" rx="2.5" ry="2.2" fill="#fff" opacity="0.72"/><path d="M22 12 Q29 12 29 18 Q29 24 22 24" stroke="#f5c842" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.9"/><rect x="5" y="10" width="16" height="16" rx="2" fill="#e8a820" opacity="0.55"/><circle cx="10" cy="18" r="1.2" fill="#fff" opacity="0.25"/><circle cx="14" cy="22" r="0.8" fill="#fff" opacity="0.2"/><circle cx="17" cy="16" r="1" fill="#fff" opacity="0.22"/></svg></div>
+  <div style="font-family:var(--font-mono); font-size:1rem; margin-bottom:.5rem; color:var(--text);">No sessions yet</div>
+  <div style="font-size:.83rem; margin-bottom:1.5rem;">Create your first game above to get started!</div>
+  <a href="{% url 'new_game' %}" class="btn btn-primary" style="padding:.65rem 1.5rem;">New Game</a>
+</div>
+{% endif %}
+
+<script>
+// ── Panel toggles ──────────────────────────────────────────────────────────
+function toggleCreate() {
+  const p = document.getElementById('create-panel');
+  const j = document.getElementById('join-panel');
+  j.classList.remove('open');
+  p.classList.toggle('open');
+  if (p.classList.contains('open')) p.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+function toggleJoin() {
+  const p = document.getElementById('join-panel');
+  const c = document.getElementById('create-panel');
+  c.classList.remove('open');
+  p.classList.toggle('open');
+  if (p.classList.contains('open')) {
+    p.scrollIntoView({behavior:'smooth', block:'nearest'});
+    setTimeout(() => document.getElementById('join-url-input').focus(), 300);
+  }
+}
+function closeCreate() { document.getElementById('create-panel').classList.remove('open'); }
+
+// ── Join by URL ────────────────────────────────────────────────────────────
+function doJoinUrl() {
+  const raw = document.getElementById('join-url-input').value.trim();
+  const err = document.getElementById('join-error');
+  if (!raw) { showJoinError('Collez un lien d\'invitation valide.'); return; }
+
+  // Accept full URL or just the /join/token/ path
+  let path = raw;
+  try { path = new URL(raw).pathname; } catch(e) {}
+
+  if (path.startsWith('/join/')) {
+    window.location.href = raw.startsWith('http') ? raw : path;
+  } else {
+    showJoinError('Lien invalide. Il doit commencer par /join/ ou être une URL complète.');
+  }
+}
+function showJoinError(msg) {
+  const e = document.getElementById('join-error');
+  e.textContent = msg;
+  e.style.display = 'block';
+  setTimeout(() => e.style.display = 'none', 4000);
+}
+
+// ── Mode selector ──────────────────────────────────────────────────────────
+function selectMode(mode) {
+  document.getElementById('mode-input').value = mode;
+  document.getElementById('card-single').classList.toggle('selected', mode === 'single');
+  document.getElementById('card-multi').classList.toggle('selected', mode === 'multi');
+}
+
+// ── Weeks radio buttons ────────────────────────────────────────────────────
+document.querySelectorAll('.weeks-radio').forEach(radio => {
+  const btn = radio.closest('label').querySelector('.weeks-btn');
+  if (!btn) return;
+
+  // Style for the week buttons
+  btn.style.cssText = `
+    border: 2px solid var(--border); border-radius: 8px; padding: .5rem .25rem;
+    text-align: center; cursor: pointer; transition: all .15s;
+  `;
+
+  if (radio.checked) {
+    btn.style.borderColor = 'var(--accent)';
+    btn.style.background  = 'rgba(245,200,66,.08)';
+  }
+
+  radio.addEventListener('change', () => {
+    document.querySelectorAll('.weeks-btn').forEach(b => {
+      b.style.borderColor = 'var(--border)';
+      b.style.background  = 'transparent';
+    });
+    btn.style.borderColor = 'var(--accent)';
+    btn.style.background  = 'rgba(245,200,66,.08)';
+  });
+  btn.addEventListener('click', () => {
+    radio.checked = true;
+    radio.dispatchEvent(new Event('change'));
+  });
+});
+
+// ── Delete ─────────────────────────────────────────────────────────────────
+function openDel(id, name) {
+  document.getElementById('del-name').textContent = `Supprimer "${name}" ? Cette action est irréversible.`;
+  document.getElementById('del-form').action = `/game/${id}/reset/`;
+  document.getElementById('del-dialog').classList.add('open');
+}
+function closeDel() { document.getElementById('del-dialog').classList.remove('open'); }
+document.getElementById('del-dialog').addEventListener('click', e => {
+  if (e.target === document.getElementById('del-dialog')) closeDel();
+});
+</script>
+{% endblock %}

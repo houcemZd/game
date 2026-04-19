@@ -1,0 +1,497 @@
+{% extends "game/base.html" %}
+{% block title %}Initialize — {{ session.name }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* Step indicator */
+  .steps { display:flex; align-items:center; gap:0; margin-bottom:2rem; }
+  .step  { display:flex; align-items:center; gap:.5rem; font-size:.82rem; }
+  .step-num {
+    width:28px; height:28px; border-radius:50%; display:flex; align-items:center;
+    justify-content:center; font-family:var(--font-mono); font-size:.75rem; font-weight:700;
+    flex-shrink:0;
+  }
+  .step-num.done    { background:var(--success); color:#0a0c11; }
+  .step-num.active  { background:var(--accent);  color:#0a0c11; box-shadow:0 0 12px var(--accent-glow); }
+  .step-num.pending { background:var(--surface2); color:var(--muted); border:1px solid var(--border); }
+  .step-line { flex:1; height:2px; background:var(--border); margin:0 .5rem; min-width:20px; border-radius:2px; }
+  .step-line.done { background:var(--success); }
+
+  /* Param row */
+  .param-row {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:.85rem 0; border-bottom:1px solid var(--border); gap:1rem; flex-wrap:wrap;
+  }
+  .param-row:last-child { border-bottom:none; }
+  .param-label { flex:1; min-width:180px; }
+  .param-label strong { display:block; font-size:.9rem; margin-bottom:.15rem; }
+  .param-label span   { font-size:.75rem; color:var(--muted); line-height:1.4; }
+  .param-input { display:flex; align-items:center; gap:.5rem; flex-shrink:0; }
+  .param-input input[type=number] {
+    width:84px; font-family:var(--font-mono); font-size:1.15rem;
+    text-align:center; padding:.45rem .5rem;
+    border-radius:8px;
+  }
+  .param-stepper {
+    background:var(--surface2); border:1px solid var(--border); border-radius:8px;
+    color:var(--text); width:32px; height:32px; cursor:pointer; font-size:1.2rem;
+    display:flex; align-items:center; justify-content:center;
+    transition:all .18s; user-select:none; flex-shrink:0;
+  }
+  .param-stepper:hover { border-color:var(--accent); color:var(--accent); background:var(--accent-dim); }
+
+  /* Live board preview */
+  .preview-board {
+    display:flex; align-items:flex-start; gap:0;
+    background:#060810; border-radius:10px; padding:1rem .75rem;
+    overflow-x:auto; margin-top:.75rem;
+    border:1px solid var(--border);
+  }
+  .pb-actor { display:flex; flex-direction:column; align-items:center; gap:4px; flex:1; min-width:90px; }
+  .pb-role  { font-family:var(--font-mono); font-size:.6rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; margin-top:2px; }
+  .pb-box   {
+    border:1.5px solid #2a2f3d; border-radius:4px; background:#161920;
+    padding:3px 6px; text-align:center; min-width:52px; width:100%;
+  }
+  .pb-box-lbl { font-size:.5rem; color:#6b7280; line-height:1.2; font-family:monospace; }
+  .pb-box-val { font-family:monospace; font-size:.85rem; font-weight:700; }
+  .pb-box-val.amber { color:#f5c842; }
+  .pb-box-val.blue  { color:#3b82f6; }
+  .pb-box-val.green { color:#22c55e; }
+  .pb-box-val.red   { color:#ef4444; }
+  .pb-delays { display:flex; flex-direction:column; gap:3px; }
+  .pb-row    { display:flex; gap:3px; align-items:flex-end; }
+  .pb-arrow  { width:20px; display:flex; flex-direction:column; align-items:center; justify-content:center; padding-top:20px; gap:4px; flex-shrink:0; }
+  .pb-arr-line { width:16px; height:2px; background:#2a2f3d; position:relative; }
+  .pb-arr-right::after { content:''; position:absolute; right:-2px; top:-3px; width:0; height:0; border:4px solid transparent; border-left-color:#f5c842; }
+  .pb-arr-left::after  { content:''; position:absolute; left:-2px; top:-3px; width:0; height:0; border:4px solid transparent; border-right-color:#3b82f6; }
+
+  /* Cost fields */
+  .cost-row { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:640px; margin:2rem auto;">
+
+  <!-- Step indicator -->
+  <div class="steps">
+    <div class="step">
+      <div class="step-num done">✓</div>
+      <span style="color:var(--muted);">Game Setup</span>
+    </div>
+    <div class="step-line done"></div>
+    <div class="step">
+      <div class="step-num active">2</div>
+      <span style="color:var(--text); font-weight:600;">Initial State</span>
+    </div>
+    <div class="step-line"></div>
+    <div class="step">
+      <div class="step-num pending">3</div>
+      <span style="color:var(--muted);">Play</span>
+    </div>
+  </div>
+
+  <h2 style="font-family:var(--font-mono); font-size:1.3rem; margin-bottom:.3rem;">
+    Initial State — <span style="color:var(--accent)">{{ session.name }}</span>
+  </h2>
+  <p style="color:var(--muted); font-size:.85rem; margin-bottom:1.5rem;">
+    Configure starting inventory and pipeline for all 4 roles. These values apply equally to Retailer, Wholesaler, Distributor, and Factory.
+  </p>
+
+  <form method="POST">
+    {% csrf_token %}
+
+    <!-- ── Core parameters ── -->
+    <div class="card" style="margin-bottom:1.25rem;">
+      <div class="card-title">Starting Pipeline</div>
+
+      <div class="param-row">
+        <div class="param-label">
+          <strong>Initial Inventory</strong>
+          <span>Units each role starts with on hand</span>
+        </div>
+        <div class="param-input">
+          <button type="button" class="param-stepper" onclick="adj('init_inventory',-1)">−</button>
+          <input type="number" id="init_inventory" name="init_inventory" min="0" max="100" value="12" oninput="updatePreview()" />
+          <button type="button" class="param-stepper" onclick="adj('init_inventory',+1)">+</button>
+        </div>
+      </div>
+
+      <div class="param-row">
+        <div class="param-label">
+          <strong>Orders placed (pipeline — week 1 &amp; 2)</strong>
+          <span>Units already ordered upstream — in the order-delay pipeline before week 1</span>
+        </div>
+        <div class="param-input">
+          <button type="button" class="param-stepper" onclick="adj('init_orders_placed',-1)">−</button>
+          <input type="number" id="init_orders_placed" name="init_orders_placed" min="0" max="50" value="4" oninput="updatePreview()" />
+          <button type="button" class="param-stepper" onclick="adj('init_orders_placed',+1)">+</button>
+        </div>
+      </div>
+
+      <div class="param-row">
+        <div class="param-label">
+          <strong>Incoming orders (pipeline — week 1 &amp; 2)</strong>
+          <span>Units already shipped and in transit — in the ship-delay pipeline before week 1</span>
+        </div>
+        <div class="param-input">
+          <button type="button" class="param-stepper" onclick="adj('init_incoming',-1)">−</button>
+          <input type="number" id="init_incoming" name="init_incoming" min="0" max="50" value="4" oninput="updatePreview()" />
+          <button type="button" class="param-stepper" onclick="adj('init_incoming',+1)">+</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Cost parameters ── -->
+    <div class="card" style="margin-bottom:1.25rem;">
+      <div class="card-title">Cost Parameters (per unit / per week)</div>
+      <div class="cost-row">
+        <div>
+          <label style="font-size:.78rem; color:var(--muted); display:block; margin-bottom:.35rem;">
+            Holding cost <span style="color:var(--accent)">$</span> / unit in inventory
+          </label>
+          <input type="number" name="holding_cost" value="0.5" min="0" max="10" step="0.1"
+                 style="font-family:var(--font-mono); font-size:.95rem;" />
+        </div>
+        <div>
+          <label style="font-size:.78rem; color:var(--muted); display:block; margin-bottom:.35rem;">
+            Backlog cost <span style="color:var(--danger)">$</span> / unfilled unit
+          </label>
+          <input type="number" name="backlog_cost" value="1.0" min="0" max="10" step="0.1"
+                 style="font-family:var(--font-mono); font-size:.95rem;" />
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Demand Schedule ── -->
+    <div class="card" style="margin-bottom:1.25rem;">
+      <div class="card-title">Customer Demand Mode</div>
+      <p style="font-size:.75rem; color:var(--muted); margin-bottom:.85rem;">
+        Choose how customer demand is generated each week. Pre-seeded schedules remove the need for a live customer player.
+      </p>
+
+      <div style="display:flex; flex-direction:column; gap:.7rem;">
+        <label style="display:flex; align-items:flex-start; gap:.65rem; cursor:pointer;">
+          <input type="radio" name="demand_mode" value="manual" checked
+                 onchange="toggleDemandCustom()" style="margin-top:3px;" />
+          <span>
+            <strong style="color:var(--text);">Manual</strong> —
+            <span style="color:var(--muted); font-size:.8rem;">
+              A live customer player submits demand every week. Game pauses until demand is entered.
+            </span>
+          </span>
+        </label>
+
+        <label style="display:flex; align-items:flex-start; gap:.65rem; cursor:pointer;">
+          <input type="radio" name="demand_mode" value="classic"
+                 onchange="toggleDemandCustom()" style="margin-top:3px;" />
+          <span>
+            <strong style="color:var(--text);">Classic MIT (4 → 8)</strong> —
+            <span style="color:var(--muted); font-size:.8rem;">
+              4 units/week for weeks 1–4, then 8 units/week. The standard teaching scenario.
+              A customer player is not required.
+            </span>
+          </span>
+        </label>
+
+        <label style="display:flex; align-items:flex-start; gap:.65rem; cursor:pointer;">
+          <input type="radio" name="demand_mode" value="custom"
+                 onchange="toggleDemandCustom()" style="margin-top:3px;" />
+          <span>
+            <strong style="color:var(--text);">Custom schedule</strong> —
+            <span style="color:var(--muted); font-size:.8rem;">
+              Enter a comma-separated list of weekly demand values. The last value repeats if the
+              game lasts longer than the list. A customer player is not required.
+            </span>
+          </span>
+        </label>
+
+        <div id="demand-custom-row" style="display:none; margin-left:1.8rem;">
+          <label style="font-size:.78rem; color:var(--muted); display:block; margin-bottom:.3rem;">
+            Demand per week (comma-separated, e.g. <code style="color:var(--accent);">4,4,4,4,8,8,8,16</code>)
+          </label>
+          <input type="text" name="demand_custom_values" id="demand_custom_values"
+                 placeholder="4,4,4,4,8,8,8,8"
+                 style="width:100%; font-family:var(--font-mono); font-size:.9rem;
+                        background:var(--surface2); border:1px solid var(--border);
+                        border-radius:8px; color:var(--text); padding:.45rem .75rem; outline:none;" />
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Live board preview ── -->
+    <div class="card" style="margin-bottom:1.5rem;">
+      <div class="card-title">Preview — Board at Week 0</div>
+      <p style="font-size:.75rem; color:var(--muted); margin-bottom:.5rem;">
+        This is what the supply chain board will look like when the game starts.
+      </p>
+
+      <div class="preview-board" id="preview-board">
+        <!-- Customer -->
+        <div class="pb-actor" style="min-width:56px; max-width:64px;">
+          <div style="font-size:1rem; margin-bottom:2px;">👤</div>
+          <div class="pb-role" style="color:#9ca3af;">Customer</div>
+        </div>
+
+        <!-- Arrow (shipments left, orders right) -->
+        <div class="pb-arrow">
+          <div class="pb-arr-line pb-arr-left"></div>
+          <div class="pb-arr-line pb-arr-right"></div>
+        </div>
+
+        {% for player in session.players.all %}
+        {% with role=player.role color=player.role %}
+        <div class="pb-actor">
+          <!-- Orders top row -->
+          <div class="pb-row">
+            <div class="pb-box" style="border-color:#f5c84422;">
+              <div class="pb-box-lbl">Incoming<br>orders</div>
+              <div class="pb-box-val amber" data-field="incoming_orders">4</div>
+            </div>
+            {% if role != 'factory' %}
+            <div class="pb-box" style="border-color:#f5c84244;">
+              <div class="pb-box-lbl">Orders<br>placed</div>
+              <div class="pb-box-val amber" data-field="orders_placed">4</div>
+            </div>
+            {% endif %}
+          </div>
+
+          <!-- Inventory + delay slots -->
+          <div class="pb-row" style="margin-top:4px;">
+            <div class="pb-box" style="border-color:#22c55e44; min-width:44px;">
+              <div class="pb-box-lbl">Inventory</div>
+              <div class="pb-box-val green" data-field="inventory">12</div>
+            </div>
+            <div class="pb-delays">
+              <div class="pb-box" style="border-color:#3b82f644;">
+                <div class="pb-box-lbl">{% if role == 'factory' %}Prod.{% else %}Ship.{% endif %}<br>delay</div>
+                <div class="pb-box-val blue" data-field="incoming">4</div>
+              </div>
+              <div class="pb-box" style="border-color:#3b82f644;">
+                <div class="pb-box-lbl">{% if role == 'factory' %}Prod.{% else %}Ship.{% endif %}<br>delay</div>
+                <div class="pb-box-val blue" data-field="incoming">4</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pb-role" style="color:var(--{{ role }}-color, #9ca3af);">{{ role|title }}</div>
+        </div>
+
+        {% if not forloop.last %}
+        <div class="pb-arrow">
+          <div class="pb-arr-line pb-arr-left"></div>
+          <div class="pb-arr-line pb-arr-right"></div>
+        </div>
+        {% endif %}
+        {% endwith %}
+        {% endfor %}
+      </div>
+
+      <!-- Legend -->
+      <div style="display:flex; gap:1.25rem; flex-wrap:wrap; margin-top:.75rem; font-size:.7rem; color:var(--muted);">
+        <span><span style="color:#3b82f6">■</span> Shipments in transit (← downstream)</span>
+        <span><span style="color:#f5c842">■</span> Orders (→ upstream)</span>
+        <span><span style="color:#22c55e">■</span> Inventory on hand</span>
+      </div>
+    </div>
+
+    <!-- ── Presets ── -->
+    <div class="card" style="margin-bottom:1.5rem;">
+      <div class="card-title">Quick Presets — Initial State</div>
+      <div style="display:flex; gap:.5rem; flex-wrap:wrap;">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="applyPreset(12,4,4)">
+          📖 Classic MIT (12 · 4 · 4)
+        </button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="applyPreset(20,8,8)">
+          📦 High stock (20 · 8 · 8)
+        </button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="applyPreset(4,2,2)">
+          ⚠️ Low stock (4 · 2 · 2)
+        </button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="applyPreset(0,0,0)">
+          🧪 Zero start (0 · 0 · 0)
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Scenario Packs ── -->
+    <div class="card" style="margin-bottom:1.5rem;">
+      <div class="card-title">🎓 Scenario Packs</div>
+      <p style="font-size:.75rem; color:var(--muted); margin-bottom:1rem; line-height:1.55;">
+        One-click teaching scenarios — fills in the demand schedule and initial state automatically.
+        Each scenario is designed to highlight a specific supply-chain concept.
+      </p>
+      <div style="display:flex; flex-direction:column; gap:.6rem;">
+
+        <div style="border:1px solid var(--border); border-radius:10px; padding:.75rem 1rem;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:.75rem; flex-wrap:wrap;">
+            <div>
+              <div style="font-size:.85rem; font-weight:700; margin-bottom:.2rem;">📖 Classic MIT Step</div>
+              <div style="font-size:.73rem; color:var(--muted); line-height:1.45;">
+                Demand: 4 units/week for weeks 1–4, then 8 forever.
+                The original Beer Game setup — demonstrates bullwhip from a single demand step.
+              </div>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm" style="flex-shrink:0;"
+                    onclick="applyScenario(12,4,4,'classic','')">
+              Apply
+            </button>
+          </div>
+        </div>
+
+        <div style="border:1px solid var(--border); border-radius:10px; padding:.75rem 1rem;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:.75rem; flex-wrap:wrap;">
+            <div>
+              <div style="font-size:.85rem; font-weight:700; margin-bottom:.2rem;">📈 Demand Spike</div>
+              <div style="font-size:.73rem; color:var(--muted); line-height:1.45;">
+                Demand: 4,4,4,4,20,8,8,8,8,8 then 8 repeating.
+                An extreme one-off surge — explores panic ordering and over-correction.
+              </div>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm" style="flex-shrink:0;"
+                    onclick="applyScenario(12,4,4,'custom','4,4,4,4,20,8,8,8,8,8')">
+              Apply
+            </button>
+          </div>
+        </div>
+
+        <div style="border:1px solid var(--border); border-radius:10px; padding:.75rem 1rem;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:.75rem; flex-wrap:wrap;">
+            <div>
+              <div style="font-size:.85rem; font-weight:700; margin-bottom:.2rem;">🌊 Seasonal Demand</div>
+              <div style="font-size:.73rem; color:var(--muted); line-height:1.45;">
+                Demand: 4,4,8,8,4,4,8,8 repeating (every 4 weeks).
+                Shows how predictable seasonality is still amplified by the bullwhip.
+              </div>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm" style="flex-shrink:0;"
+                    onclick="applyScenario(12,4,4,'custom','4,4,8,8,4,4,8,8,4,4,8,8,4,4,8,8,4,4,8,8,4,4,8,8')">
+              Apply
+            </button>
+          </div>
+        </div>
+
+        <div style="border:1px solid var(--border); border-radius:10px; padding:.75rem 1rem;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:.75rem; flex-wrap:wrap;">
+            <div>
+              <div style="font-size:.85rem; font-weight:700; margin-bottom:.2rem;">🛑 Supply Disruption</div>
+              <div style="font-size:.73rem; color:var(--muted); line-height:1.45;">
+                Demand: 4,4,4,4,0,0,0,8,8,8 then 8 repeating.
+                A sudden demand collapse followed by a rebound — stresses backlog and over-ordering.
+              </div>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm" style="flex-shrink:0;"
+                    onclick="applyScenario(12,4,4,'custom','4,4,4,4,0,0,0,8,8,8')">
+              Apply
+            </button>
+          </div>
+        </div>
+
+        <div style="border:1px solid var(--border); border-radius:10px; padding:.75rem 1rem;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:.75rem; flex-wrap:wrap;">
+            <div>
+              <div style="font-size:.85rem; font-weight:700; margin-bottom:.2rem;">📉 Gradual Growth</div>
+              <div style="font-size:.73rem; color:var(--muted); line-height:1.45;">
+                Demand: 2,3,4,5,6,7,8,9,10 then 10 repeating.
+                Slow linear growth — tests whether pipeline awareness prevents runaway backlog.
+              </div>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm" style="flex-shrink:0;"
+                    onclick="applyScenario(8,2,2,'custom','2,3,4,5,6,7,8,9,10')">
+              Apply
+            </button>
+          </div>
+        </div>
+
+        <div style="border:1px solid var(--border); border-radius:10px; padding:.75rem 1rem;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:.75rem; flex-wrap:wrap;">
+            <div>
+              <div style="font-size:.85rem; font-weight:700; margin-bottom:.2rem;">🎲 Noisy Demand</div>
+              <div style="font-size:.73rem; color:var(--muted); line-height:1.45;">
+                Demand: 4,6,3,7,5,8,4,6,5,7 then repeating.
+                Random-looking variation around a stable mean — highlights how noise gets amplified.
+              </div>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm" style="flex-shrink:0;"
+                    onclick="applyScenario(12,4,4,'custom','4,6,3,7,5,8,4,6,5,7,4,6,3,7,5,8,4,6,5,7')">
+              Apply
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div style="display:flex; gap:.75rem;">
+      <button type="submit" class="btn btn-primary" style="flex:1; justify-content:center; font-size:1rem; padding:.75rem;">
+        🚀 Start Game
+      </button>
+      <a href="{% url 'home' %}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<script>
+function toggleDemandCustom() {
+  const mode = document.querySelector('input[name="demand_mode"]:checked').value;
+  document.getElementById('demand-custom-row').style.display = (mode === 'custom') ? 'block' : 'none';
+}
+
+function adj(id, delta) {
+  const el = document.getElementById(id);
+  const v = Math.max(0, parseInt(el.value || 0) + delta);
+  el.value = v;
+  updatePreview();
+}
+
+function applyPreset(inv, orders, incoming) {
+  document.getElementById('init_inventory').value     = inv;
+  document.getElementById('init_orders_placed').value = orders;
+  document.getElementById('init_incoming').value      = incoming;
+  updatePreview();
+}
+
+function applyScenario(inv, orders, incoming, demandMode, demandValues) {
+  // Apply initial state
+  applyPreset(inv, orders, incoming);
+  // Apply demand mode
+  const radios = document.querySelectorAll('input[name="demand_mode"]');
+  radios.forEach(r => { r.checked = (r.value === demandMode); });
+  // Show/hide custom input and fill values
+  const customRow = document.getElementById('demand-custom-row');
+  const customInput = document.getElementById('demand_custom_values');
+  if (demandMode === 'custom') {
+    customRow.style.display = 'block';
+    if (customInput) customInput.value = demandValues;
+  } else {
+    customRow.style.display = 'none';
+  }
+}
+
+function updatePreview() {
+  const inv     = parseInt(document.getElementById('init_inventory').value)     || 0;
+  const orders  = parseInt(document.getElementById('init_orders_placed').value) || 0;
+  const incoming= parseInt(document.getElementById('init_incoming').value)       || 0;
+
+  // Update all preview value cells
+  document.querySelectorAll('[data-field="inventory"]').forEach(el => {
+    el.textContent = inv;
+    el.className = 'pb-box-val ' + (inv > 6 ? 'green' : inv > 0 ? 'amber' : 'red');
+  });
+  document.querySelectorAll('[data-field="orders_placed"]').forEach(el => {
+    el.textContent = orders;
+  });
+  document.querySelectorAll('[data-field="incoming_orders"]').forEach(el => {
+    el.textContent = orders;  // incoming orders = what upstream expects = orders placed
+  });
+  document.querySelectorAll('[data-field="incoming"]').forEach(el => {
+    el.textContent = incoming;
+    el.className = 'pb-box-val ' + (incoming > 0 ? 'blue' : 'muted');
+  });
+}
+
+// Init on load
+updatePreview();
+</script>
+{% endblock %}

@@ -1,0 +1,450 @@
+{% extends "game/base.html" %}
+{% load game_extras %}
+{% block title %}{{ session.name }} — Week {{ session.current_week }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* ── Player card ────────────────────────────────────────────────────────── */
+  .player-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    overflow: hidden;
+    transition: transform .18s, border-color .18s, box-shadow .18s;
+    position: relative;
+  }
+  .player-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: var(--role-cl, var(--border));
+  }
+  .player-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--border-hover);
+  }
+  .player-card-header {
+    padding: 1rem 1.25rem .75rem;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .player-card-body { padding: 1.25rem; }
+  .order-input-row  { display: flex; gap: .5rem; align-items: center; margin-top: 1rem; }
+  .order-input-row input { flex: 1; }
+
+  /* ── History table ──────────────────────────────────────────────────────── */
+  .history-table { width: 100%; border-collapse: collapse; font-size: .78rem; font-family: var(--font-mono); }
+  .history-table th {
+    color: var(--muted); text-align: right; padding: .35rem .5rem;
+    font-weight: 600; font-size: .68rem; text-transform: uppercase;
+    letter-spacing: .1em; border-bottom: 1px solid var(--border);
+  }
+  .history-table th:first-child { text-align: left; }
+  .history-table td { padding: .32rem .5rem; text-align: right; border-bottom: 1px solid rgba(255,255,255,.04); }
+  .history-table td:first-child { text-align: left; color: var(--muted); }
+  .history-table tr:hover td { background: var(--surface2); }
+  .inv-positive { color: var(--success); font-weight: 700; }
+  .inv-zero     { color: var(--muted); }
+  .inv-negative { color: var(--danger); font-weight: 700; }
+
+  /* ── Chart ──────────────────────────────────────────────────────────────── */
+  .chart-wrap { position: relative; height: 220px; }
+
+  /* ── Customer demand card ───────────────────────────────────────────────── */
+  .demand-card {
+    background: var(--surface);
+    border: 1.5px solid rgba(245,200,66,.4);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.25rem;
+    margin-bottom: 1.25rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .demand-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--accent), #fdd835, transparent);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Header -->
+<div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; margin-bottom:1.5rem;" class="fade-up">
+  <div>
+    <h2 style="font-family:var(--font-mono); font-size:1.3rem; margin-bottom:.3rem;">{{ session.name }}</h2>
+    <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
+      <span class="week-badge">Week <strong>{{ session.current_week }}</strong> / {{ session.max_weeks }}</span>
+      {% if session.is_finished %}
+      <span style="color:var(--accent); font-size:.78rem; font-family:var(--font-mono); background:var(--accent-dim); border:1px solid rgba(245,200,66,.3); border-radius:999px; padding:.18rem .7rem;">● GAME OVER</span>
+      {% endif %}
+    </div>
+  </div>
+  <div style="display:flex; gap:.45rem; flex-wrap:wrap; align-items:center;">
+    {% if session.is_finished %}
+    <a href="{% url 'results' session.id %}" class="btn btn-primary btn-sm"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><rect x="2" y="12" width="4" height="10" rx="1" fill="currentColor" opacity="0.5"/><rect x="10" y="7" width="4" height="15" rx="1" fill="currentColor" opacity="0.7"/><rect x="18" y="2" width="4" height="20" rx="1" fill="currentColor" opacity="0.9"/></svg> Results</a>
+    {% endif %}
+    <a href="{% url 'customer_view' session.id %}" class="btn btn-ghost btn-sm" style="border-color:rgba(245,200,66,.35); color:var(--accent);">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><circle cx="12" cy="8" r="4.5" fill="currentColor" opacity="0.9"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.7"/></svg> Customer
+    </a>
+    {% for r in roles %}
+    <a href="{% url 'client_view' session.id r %}" class="btn btn-ghost btn-sm" style="font-size:.72rem; padding:.25rem .6rem;">
+      {% if r == 'retailer' %}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><path d="M3 10l1-6h16l1 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M3 10v10a2 2 0 002 2h14a2 2 0 002-2V10" stroke="currentColor" stroke-width="2" fill="none"/><rect x="9" y="14" width="6" height="8" rx="1" fill="currentColor" opacity="0.5"/></svg>{% elif r == 'wholesaler' %}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><rect x="2" y="6" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><rect x="6" y="2" width="12" height="4" rx="1" fill="currentColor" opacity="0.5"/></svg>{% elif r == 'distributor' %}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><rect x="1" y="6" width="15" height="10" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M16 9h4l3 4v3h-7V9z" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="6.5" cy="17.5" r="2" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="19" cy="17.5" r="2" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>{% else %}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><path d="M2 20V10l5-4v4l5-4v4l5-4v10" stroke="currentColor" stroke-width="2" fill="none"/><rect x="2" y="16" width="20" height="6" rx="1" fill="currentColor" opacity="0.3"/></svg>{% endif %}{{ r|slice:":4"|upper }}
+    </a>
+    {% endfor %}
+    <a href="{% url 'home' %}" class="btn btn-ghost btn-sm">← Sessions</a>
+  </div>
+</div>
+
+<!-- Progress bar -->
+<div style="margin-bottom:2rem;">
+  <div class="progress-bar">
+    <div class="progress-fill" style="width:{% widthratio session.current_week session.max_weeks 100 %}%"></div>
+  </div>
+  <div style="display:flex; justify-content:space-between; font-size:.65rem; color:var(--muted); margin-top:.3rem; font-family:var(--font-mono);">
+    <span>Week 0</span><span>Week {{ session.max_weeks }}</span>
+  </div>
+</div>
+
+{% if not session.is_finished %}
+<form method="POST" action="{% url 'next_turn' session.id %}">
+{% csrf_token %}
+
+<!-- Customer demand input -->
+<div class="demand-card">
+  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.75rem;">
+    <div style="display:flex; align-items:center; gap:.75rem;">
+      <span style="font-size:1.6rem; filter:drop-shadow(0 0 8px rgba(245,200,66,.4));"><svg width="28" height="28" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4.5" fill="#f5c842" opacity="0.9"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="#f5c842" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.7"/></svg></span>
+      <div>
+        <div style="font-family:var(--font-mono); font-size:.78rem; color:var(--accent); font-weight:700; letter-spacing:.08em;">
+          CUSTOMER DEMAND — WEEK {{ session.current_week|add:1 }}
+        </div>
+        <div style="font-size:.7rem; color:var(--muted); margin-top:.1rem;">Units the customer orders this week</div>
+      </div>
+    </div>
+    <div style="display:flex; align-items:center; gap:.75rem;">
+      {% if last_demand %}<span style="font-size:.73rem; color:var(--muted);">Last: <strong style="color:var(--text)">{{ last_demand.quantity }}</strong></span>{% endif %}
+      <input type="number" name="customer_demand" min="0" required
+             placeholder="qty" value="{{ last_demand.quantity|default:4 }}"
+             style="width:110px; font-family:var(--font-mono); font-size:1.15rem; text-align:center;" />
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Player cards -->
+<div class="grid-4" style="margin-bottom:2rem;">
+  {% for player in players %}
+  <div class="player-card" style="--role-cl:var(--{{ player.role }}-color);">
+    <div class="player-card-header">
+      <div>
+        <div><span class="role-badge role-{{ player.role }}">{{ player.role }}</span></div>
+        <div style="font-family:var(--font-mono); font-size:.9rem; margin-top:.4rem; font-weight:700;">{{ player.name }}</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:.65rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em;">Cost</div>
+        <div style="font-family:var(--font-mono); color:var(--accent); font-size:1rem; font-weight:700;">${{ player.total_cost|floatformat:1 }}</div>
+      </div>
+    </div>
+    <div class="player-card-body">
+      <div class="stat-row">
+        <div class="stat" style="flex:1;">
+          <div class="stat-label">Inventory</div>
+          <div class="stat-value {% if player.inventory > 6 %}good{% elif player.inventory > 0 %}warn{% else %}bad{% endif %}">{{ player.inventory }}</div>
+        </div>
+        <div class="stat" style="flex:1;">
+          <div class="stat-label">Backlog</div>
+          <div class="stat-value {% if player.backlog == 0 %}good{% elif player.backlog < 5 %}warn{% else %}bad{% endif %}">{{ player.backlog }}</div>
+        </div>
+      </div>
+      {% if last_week_states %}
+        {% for role, s in last_week_states.items %}
+          {% if role == player.role %}
+          <div style="margin-top:.75rem; font-size:.72rem; color:var(--muted); display:flex; gap:.65rem; flex-wrap:wrap;">
+            <span>▼ Rcvd: <strong style="color:var(--text)">{{ s.shipment_received }}</strong></span>
+            <span>▲ Sent: <strong style="color:var(--text)">{{ s.shipment_sent }}</strong></span>
+            <span>↑ Ord: <strong style="color:var(--text)">{{ s.order_placed }}</strong></span>
+          </div>
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+      {% if not session.is_finished %}
+      <div class="order-input-row">
+        <input type="number" name="order_{{ player.id }}" min="0"
+               {% if player.role != 'factory' %}max="999"{% endif %}
+               placeholder="{% if player.role == 'factory' %}Produce qty{% else %}Order qty{% endif %}"
+               value="{{ ai_orders|get_item:player.id|default:4 }}"
+               style="font-family:var(--font-mono); font-size:1rem; text-align:center;" />
+      </div>
+      <div style="font-size:.68rem; color:var(--muted); margin-top:.3rem; text-align:center;">
+        {% if player.role == 'factory' %}Production — no upstream limit
+        {% else %}AI suggests: <strong style="color:var(--text)">{{ ai_orders|get_item:player.id|default:4 }}</strong>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if not session.is_finished %}
+<div style="display:flex; justify-content:center; margin-bottom:2.5rem;">
+  <button type="submit" class="btn btn-primary" style="font-size:1rem; padding:.8rem 2.75rem;">
+    ▶ Advance to Week {{ session.current_week|add:1 }}
+  </button>
+</div>
+</form>
+{% endif %}
+
+<!-- ══════════════════ SUPPLY CHAIN BOARD ══════════════════════════════════ -->
+<div class="card" style="margin-bottom:1.5rem; padding:1.1rem 1.25rem;">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:.9rem;">
+    <div class="card-title" style="margin:0;">Supply Chain Board — Week {{ session.current_week }}</div>
+    <div style="font-size:.62rem; color:var(--muted); font-family:var(--font-mono);">
+      <span style="color:rgba(245,200,66,.8);">■</span> orders &nbsp;
+      <span style="color:rgba(59,130,246,.8);">■</span> shipments
+    </div>
+  </div>
+  <div style="overflow-x:auto; padding:.2rem 0;">
+    <div id="db-chain" style="display:flex; align-items:stretch; gap:0; min-width:740px; font-family:var(--font-mono);">
+
+      <!-- Customer node -->
+      <div style="display:flex; flex-direction:column; align-items:center; flex:0 0 72px; min-width:72px;">
+        <div style="font-size:.58rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; padding:.3rem .2rem .25rem; text-align:center; height:26px; display:flex; align-items:center; justify-content:center; gap:.2rem;">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><circle cx="12" cy="8" r="4.5" fill="currentColor" opacity="0.9"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.7"/></svg> Customer
+        </div>
+        <div style="flex:1; display:flex; align-items:center; justify-content:center; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:.5rem .3rem; width:100%; text-align:center; min-height:90px;">
+          <div>
+            <div style="font-size:1.5rem; font-weight:800; line-height:1; color:var(--accent);">
+              {% if last_demand %}{{ last_demand.quantity }}{% else %}—{% endif %}
+            </div>
+            <div style="font-size:.52rem; color:var(--muted); margin-top:2px;">units</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- C→R arrow -->
+      <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; flex-shrink:0; width:18px; padding-top:26px;">
+        <span style="font-size:.7rem; color:rgba(245,200,66,.7);">→</span>
+        <span style="font-size:.7rem; color:rgba(59,130,246,.7);">←</span>
+      </div>
+
+      {% for player in players %}
+      <!-- {{ player.role|capfirst }} actor column -->
+      <div style="display:flex; flex-direction:column; flex:1; min-width:0;
+        {% if player.role == 'retailer' %}border:1.5px solid rgba(245,200,66,.35); box-shadow:0 0 12px rgba(245,200,66,.06);
+        {% elif player.role == 'wholesaler' %}border:1.5px solid rgba(59,130,246,.35); box-shadow:0 0 12px rgba(59,130,246,.06);
+        {% elif player.role == 'distributor' %}border:1.5px solid rgba(168,85,247,.35); box-shadow:0 0 12px rgba(168,85,247,.06);
+        {% elif player.role == 'factory' %}border:1.5px solid rgba(34,197,94,.35); box-shadow:0 0 12px rgba(34,197,94,.06);
+        {% endif %} border-radius:8px; overflow:hidden;">
+
+        <!-- Role header -->
+        <div style="font-size:.6rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em;
+          padding:.35rem .4rem .28rem; text-align:center; height:26px; display:flex; align-items:center; justify-content:center; gap:.3rem;
+          {% if player.role == 'retailer' %}background:rgba(245,200,66,.1); color:#ffd36a;
+          {% elif player.role == 'wholesaler' %}background:rgba(59,130,246,.1); color:#8ecbff;
+          {% elif player.role == 'distributor' %}background:rgba(168,85,247,.1); color:#d8a4ff;
+          {% elif player.role == 'factory' %}background:rgba(34,197,94,.1); color:#4ade80;
+          {% endif %}">
+          {% if player.role == 'retailer' %}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><path d="M3 10l1-6h16l1 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M3 10v10a2 2 0 002 2h14a2 2 0 002-2V10" stroke="currentColor" stroke-width="2" fill="none"/><rect x="9" y="14" width="6" height="8" rx="1" fill="currentColor" opacity="0.5"/></svg>{% elif player.role == 'wholesaler' %}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><rect x="2" y="6" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><rect x="6" y="2" width="12" height="4" rx="1" fill="currentColor" opacity="0.5"/></svg>{% elif player.role == 'distributor' %}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><rect x="1" y="6" width="15" height="10" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M16 9h4l3 4v3h-7V9z" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="6.5" cy="17.5" r="2" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="19" cy="17.5" r="2" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>{% else %}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><path d="M2 20V10l5-4v4l5-4v4l5-4v10" stroke="currentColor" stroke-width="2" fill="none"/><rect x="2" y="16" width="20" height="6" rx="1" fill="currentColor" opacity="0.3"/></svg>{% endif %}
+          {{ player.role|capfirst }}
+        </div>
+
+        <!-- Body: [orders-out] [inventory] [incoming-ships] -->
+        <div style="display:flex; flex-direction:row; flex:1; padding:3px; gap:2px; background:var(--surface);">
+
+          <!-- Orders out / prod requests (amber) -->
+          <div style="display:flex; flex-direction:column; align-items:center; width:32px; flex-shrink:0; gap:2px;">
+            <div style="font-size:.4rem; color:rgba(245,200,66,.65); text-transform:uppercase; letter-spacing:.03em; height:18px; display:flex; align-items:center; justify-content:center; text-align:center;">
+              {% if player.role == 'factory' %}REQ{% else %}ORD{% endif %}
+            </div>
+            <div data-db-slot="{% if player.role == 'factory' %}fa{% else %}{{ player.role|slice:':2' }}{% endif %}-ord-1"
+              style="width:100%; min-height:32px; border:1px solid rgba(245,200,66,.3); background:rgba(245,200,66,.07); border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:.78rem; font-weight:800; color:#ffd36a;">·</div>
+            <div data-db-slot="{% if player.role == 'factory' %}fa{% else %}{{ player.role|slice:':2' }}{% endif %}-ord-2"
+              style="width:100%; min-height:32px; border:1px solid rgba(245,200,66,.2); background:rgba(245,200,66,.04); border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:.78rem; font-weight:800; color:#ffd36a; opacity:.7;">·</div>
+          </div>
+
+          <!-- Inventory (center) -->
+          <div style="flex:1; display:flex; align-items:center; justify-content:center; background:var(--surface2); border-radius:6px; padding:.35rem .25rem; text-align:center; position:relative; overflow:hidden; min-height:82px;">
+            <!-- Health bar at bottom -->
+            <div style="position:absolute; bottom:0; left:0; right:0; height:3px; border-radius:0 0 6px 6px;
+              background:{% if player.inventory > 8 %}#22c55e{% elif player.inventory > 0 %}#f5c842{% else %}#ef4444{% endif %};
+              width:{% widthratio player.inventory 40 100 %}%;"></div>
+            <div>
+              <div style="font-size:1.4rem; font-weight:800; line-height:1;
+                {% if player.inventory > 8 %}color:#22c55e;
+                {% elif player.inventory > 0 %}color:#f5c842;
+                {% else %}color:#ef4444;{% endif %}">{{ player.inventory }}</div>
+              {% if player.backlog > 0 %}
+              <div style="font-size:.52rem; color:var(--danger); margin-top:2px; font-weight:700;">blg:{{ player.backlog }}</div>
+              {% else %}
+              <div style="font-size:.52rem; color:var(--muted); margin-top:2px;">blg:0</div>
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- Incoming shipments / prod delay (blue) -->
+          <div style="display:flex; flex-direction:column; align-items:center; width:32px; flex-shrink:0; gap:2px;">
+            <div style="font-size:.4rem; color:rgba(59,130,246,.65); text-transform:uppercase; letter-spacing:.03em; height:18px; display:flex; align-items:center; justify-content:center; text-align:center;">
+              {% if player.role == 'factory' %}PROD{% else %}SHP{% endif %}
+            </div>
+            <div data-db-slot="{% if player.role == 'factory' %}fa{% else %}{{ player.role|slice:':2' }}{% endif %}-ship-1"
+              style="width:100%; min-height:32px; border:1px solid rgba(59,130,246,.3); background:rgba(59,130,246,.07); border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:.78rem; font-weight:800; color:#8ecbff;">·</div>
+            <div data-db-slot="{% if player.role == 'factory' %}fa{% else %}{{ player.role|slice:':2' }}{% endif %}-ship-2"
+              style="width:100%; min-height:32px; border:1px solid rgba(59,130,246,.2); background:rgba(59,130,246,.04); border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:.78rem; font-weight:800; color:#8ecbff; opacity:.7;">·</div>
+          </div>
+
+        </div><!-- /body -->
+      </div><!-- /actor -->
+
+      {% if not forloop.last %}
+      <!-- Arrow between actors -->
+      <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; flex-shrink:0; width:18px; padding-top:26px;">
+        <span style="font-size:.7rem; color:rgba(245,200,66,.7);">→</span>
+        <span style="font-size:.7rem; color:rgba(59,130,246,.7);">←</span>
+      </div>
+      {% endif %}
+      {% endfor %}
+
+    </div><!-- /#db-chain -->
+  </div>
+
+  <script>
+  /* Populate dashboard board slots from pipeline_data */
+  (function(){
+    const DATA = {{ pipeline_data|safe }};
+    // Role → 2-char prefix (must match data-db-slot attributes)
+    const PRE = {retailer:'re', wholesaler:'wh', distributor:'di', factory:'fa'};
+
+    // Build per-role buckets: incoming shipments and outgoing orders
+    const ships = {}, orders = {};
+    DATA.forEach(function(item){
+      const toKey   = PRE[item.to]   || item.to.slice(0,2);
+      const fromKey = PRE[item.from] || item.from.slice(0,2);
+      if (item.type !== 'order') {
+        // Shipment arriving TO this role
+        if (!ships[toKey]) ships[toKey] = [];
+        ships[toKey].push(item);
+      } else {
+        // Order placed FROM this role going upstream
+        if (!orders[fromKey]) orders[fromKey] = [];
+        orders[fromKey].push(item);
+      }
+    });
+
+    function fill(slotAttr, items) {
+      const els = document.querySelectorAll('[data-db-slot="' + slotAttr + '"]');
+      els.forEach(function(el, i) {
+        const item = items && items[i];
+        if (item) {
+          el.textContent = item.qty;
+          if (item.weeks_away === 0) {
+            el.style.borderColor = 'var(--success)';
+            el.style.color = 'var(--success)';
+            el.title = 'Arriving this week!';
+          }
+        }
+      });
+    }
+
+    // Fill ship slots (incoming to each role)
+    Object.keys(ships).forEach(function(pre) {
+      const sorted = ships[pre].slice().sort(function(a,b){ return a.weeks_away - b.weeks_away; });
+      fill(pre + '-ship-1', [sorted[0]]);
+      fill(pre + '-ship-2', [sorted[1]]);
+    });
+
+    // Fill order slots (outgoing from each role)
+    // Factory: "re" key won't exist; use "fa-ord" for factory production requests
+    Object.keys(orders).forEach(function(pre) {
+      const sorted = orders[pre].slice().sort(function(a,b){ return a.weeks_away - b.weeks_away; });
+      fill(pre + '-ord-1', [sorted[0]]);
+      fill(pre + '-ord-2', [sorted[1]]);
+    });
+  })();
+  </script>
+</div><!-- /.card Supply Chain Board -->
+
+{% if session.current_week > 0 %}
+
+<!-- Charts -->
+<div class="card" style="margin-bottom:1.5rem;">
+  <div class="card-title">Inventory Over Time</div>
+  <div class="chart-wrap"><canvas id="inventoryChart"></canvas></div>
+</div>
+<div class="grid-2" style="margin-bottom:1.5rem;">
+  <div class="card">
+    <div class="card-title">Orders Placed (Bullwhip)</div>
+    <div class="chart-wrap"><canvas id="ordersChart"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Cumulative Cost</div>
+    <div class="chart-wrap"><canvas id="costChart"></canvas></div>
+  </div>
+</div>
+
+<!-- History table -->
+<div class="card" style="margin-bottom:1.5rem; overflow-x:auto;">
+  <div class="card-title">Weekly Log</div>
+  <table class="history-table">
+    <thead>
+      <tr>
+        <th>Wk</th>
+        {% for player in players %}
+          <th style="color:var(--{{ player.role }}-color,var(--muted))">{{ player.role|slice:":4"|upper }}</th>
+          <th>Bklg</th><th>Ord</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for w in weeks_range %}
+      <tr>
+        <td>{{ w }}</td>
+        {% for player in players %}
+          {% for state in player.history.all %}
+            {% if state.week == w %}
+              <td class="{% if state.inventory > 0 %}inv-positive{% else %}inv-zero{% endif %}">{{ state.inventory }}</td>
+              <td class="{% if state.backlog > 0 %}inv-negative{% endif %}">{{ state.backlog }}</td>
+              <td>{{ state.order_placed }}</td>
+            {% endif %}
+          {% endfor %}
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- Reset -->
+<div style="text-align:right; margin-bottom:2rem;">
+  <form method="POST" action="{% url 'reset_game' session.id %}" style="display:inline;"
+        onsubmit="return confirm('Delete this session?')">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-danger btn-sm">🗑 Delete Session</button>
+  </form>
+</div>
+
+{% if session.current_week > 0 %}
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const RAW = {{ chart_data|safe }};
+  const COLORS = {retailer:'#f5c842',wholesaler:'#3b82f6',distributor:'#a855f7',factory:'#22c55e'};
+  function labels(){ return RAW['retailer']?.history.map(h=>'W'+h.week)||[]; }
+  function mkChart(id,datasets){
+    const el=document.getElementById(id); if(!el) return;
+    new Chart(el,{type:'line',data:{labels:labels(),datasets},options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#6b7280',font:{size:11}}}},
+      scales:{x:{ticks:{color:'#6b7280',font:{size:10}},grid:{color:'#2a2f3d'}},
+              y:{ticks:{color:'#6b7280',font:{size:10}},grid:{color:'#2a2f3d'}}},
+    }});
+  }
+  mkChart('inventoryChart',Object.entries(COLORS).map(([r,c])=>({label:r.charAt(0).toUpperCase()+r.slice(1),data:RAW[r]?.history.map(h=>h.inventory)||[],borderColor:c,backgroundColor:c+'22',fill:true,tension:.3,pointRadius:3})));
+  mkChart('ordersChart',Object.entries(COLORS).map(([r,c])=>({label:r.charAt(0).toUpperCase()+r.slice(1),data:RAW[r]?.history.map(h=>h.order_placed)||[],borderColor:c,backgroundColor:'transparent',tension:.2,pointRadius:3})));
+  mkChart('costChart',Object.entries(COLORS).map(([r,c])=>({label:r.charAt(0).toUpperCase()+r.slice(1),data:RAW[r]?.history.map(h=>h.cumulative_cost)||[],borderColor:c,backgroundColor:'transparent',tension:.3,pointRadius:3})));
+});
+</script>
+{% endif %}
+
+{% endblock %}
