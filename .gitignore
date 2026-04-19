@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+*.sqlite3
+beer11C/staticfiles/
+beer11C/venv/
+venv/
