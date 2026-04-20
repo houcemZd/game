@@ -8,7 +8,7 @@ built with Django + Django Channels (WebSockets) for real-time multiplayer.
 | | URL |
 |---|---|
 | **GitHub Pages URL (redirects to full game)** | `https://houcemzd.github.io/beergameenib.github.io/` |
-| **Full multiplayer app** | `https://your-app-name.up.railway.app` |
+| **Full multiplayer app** | `https://your-app-name.up.railway.app` *(replace with your real Railway URL)* |
 | **Browser demo** | `https://houcemzd.github.io/beergameenib.github.io/demo.html` |
 
 > **GitHub Pages** now redirects the root URL directly to the live full game.
