@@ -64,3 +64,24 @@ class AllowedHostsSettingsTest(SimpleTestCase):
                 'game-production-a2bc.up.railway.app',
             ],
         )
+
+    def test_normalizes_quoted_hosts(self):
+        with patch.dict(
+            os.environ,
+            {
+                'ALLOWED_HOSTS': '"example.com", \'www.example.com\', "https://api.example.com:443"',
+                'RAILWAY_PUBLIC_DOMAIN': '"game-production-a2bc.up.railway.app"',
+            },
+        ):
+            hosts = project_settings._build_allowed_hosts()
+        self.assertEqual(
+            hosts,
+            [
+                'localhost',
+                '127.0.0.1',
+                'example.com',
+                'www.example.com',
+                'api.example.com',
+                'game-production-a2bc.up.railway.app',
+            ],
+        )
