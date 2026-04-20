@@ -8,35 +8,33 @@ built with Django + Django Channels (WebSockets) for real-time multiplayer.
 | | URL |
 |---|---|
 | **GitHub Pages URL (redirects to full game)** | `https://houcemzd.github.io/beergameenib.github.io/` |
-| **Full multiplayer app** | `https://beergame-aaqe.onrender.com` |
+| **Full multiplayer app** | `https://your-app-name.up.railway.app` |
 | **Browser demo** | `https://houcemzd.github.io/beergameenib.github.io/demo.html` |
 
 > **GitHub Pages** now redirects the root URL directly to the live full game.
 > The multiplayer game (Django + WebSockets + Redis) is hosted on a
-> backend-capable platform. A one-click **Render** blueprint is included.
+> backend-capable platform. A **Railway** deployment config is included.
 
 ---
 
-## One-click deploy to Render
+## Deploy to Railway
 
-`render.yaml` at the repository root is a Render Blueprint that provisions:
+This repository includes a root `railway.toml` for Railway deployments.
 
-- A **web service** (Python / Daphne ASGI) running the Django app
-- A **PostgreSQL** database
-- A **Redis** service for Django Channels
+It installs dependencies, runs `collectstatic`, applies migrations, and starts
+Daphne using the ASGI app.
 
 **Steps:**
 
-1. Sign in to [render.com](https://render.com) and click **New → Blueprint**
-2. Connect this repository — Render detects `render.yaml` automatically
-3. Click **Apply** — Render builds, runs `collectstatic` + `migrate`, and starts Daphne
-4. Copy the generated `*.onrender.com` hostname and set it as:
-   - `ALLOWED_HOSTS` env var in the Render dashboard
-   - `CSRF_TRUSTED_ORIGINS` env var (prefix with `https://`)
-5. Update the **Play the Full Game** button URL in `index.html` and push to `main`
-
-Alternative hosts that support ASGI + WebSockets + Redis:
-**Railway.app**, **Fly.io** — Fly config files are included (`fly.toml` + `beer11C/Dockerfile`).
+1. Create a new project at [Railway](https://railway.app/) and connect this repository
+2. Add a **PostgreSQL** service and set `DATABASE_URL` from Railway's provided variable
+3. Add a **Redis** service and set `REDIS_URL` from Railway's provided variable
+4. Set:
+   - `SECRET_KEY` (strong random value)
+   - `DEBUG=False`
+   - `ALLOWED_HOSTS=your-app-name.up.railway.app`
+   - `CSRF_TRUSTED_ORIGINS=https://your-app-name.up.railway.app`
+5. Deploy, then update `index.html` with your final Railway app URL
 
 ---
 
@@ -293,10 +291,10 @@ To enable Pages in a fresh fork:
 
 ## Deployment (Production)
 
-### Option A — Render (recommended, blueprint included)
+### Option A — Railway (recommended, config included)
 
-See the **One-click deploy to Render** section at the top of this README.
-The `render.yaml` blueprint handles everything automatically.
+See the **Deploy to Railway** section at the top of this README.
+The `railway.toml` config handles build and start commands automatically.
 
 ### Option B — Manual (any ASGI host)
 
@@ -314,53 +312,8 @@ python manage.py collectstatic --no-input
 daphne -b 0.0.0.0 -p 8000 beer_game.asgi:application
 ```
 
-Supported hosting platforms:
-- **Render.com** — blueprint included in `render.yaml`
-- **Railway.app** — supports Redis + WebSockets natively; use `Procfile`
-- **Fly.io** — Docker-based, full WebSocket support; use `fly.toml` + `beer11C/Dockerfile`
-
-### Option C — Fly.io (config included)
-
-This repository includes:
-- `fly.toml` (Fly app/service/release configuration)
-- `beer11C/Dockerfile` (Django ASGI container build)
-
-**Steps:**
-
-1. Install Fly CLI and authenticate:
-   ```bash
-   fly auth login
-   ```
-2. From the repository root, create (or reuse) the app:
-   ```bash
-   fly launch --no-deploy
-   ```
-   > Keep the default generated app name or set your own in `fly.toml` (`app = "..."`).
-3. Provision backing services (recommended for production):
-   - PostgreSQL:
-     ```bash
-     fly postgres create
-     fly postgres attach <postgres-app-name>
-     ```
-     This sets `DATABASE_URL`.
-   - Redis (Upstash):
-     ```bash
-     fly redis create
-     ```
-     Set the resulting URL as `REDIS_URL`:
-     ```bash
-     fly secrets set REDIS_URL="redis://..."
-     ```
-4. Set required Django secret:
-   ```bash
-   fly secrets set SECRET_KEY="your-strong-random-secret"
-   ```
-5. Deploy:
-   ```bash
-   fly deploy
-   ```
-
-`fly deploy` runs database migrations via `release_command`, and starts Daphne on port `8000`.
+Supported hosting platform in this repository:
+- **Railway.app** — use `railway.toml` at the repository root
 
 ---
 

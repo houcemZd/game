@@ -135,7 +135,7 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
-# ── Reverse-proxy trust (Render / Railway put TLS in front) ──────────────────
+# ── Reverse-proxy trust (Railway puts TLS in front) ──────────────────────────
 USE_X_FORWARDED_HOST = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
