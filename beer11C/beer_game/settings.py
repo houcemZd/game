@@ -22,6 +22,8 @@ DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 def _normalize_host(value):
     host = value.strip()
+    while len(host) >= 2 and host[0] == host[-1] and host[0] in {"'", '"'}:
+        host = host[1:-1].strip()
     if not host:
         return ''
     if host == '*':
