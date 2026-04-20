@@ -24,18 +24,42 @@ def _normalize_host(value):
     host = value.strip()
     if not host:
         return ''
+    if host == '*':
+        return host
+
     if '://' in host:
         return (urlsplit(host).hostname or '').strip()
-    if host.startswith('[') and host.endswith(']'):
-        return host
+
+    if host.startswith('['):
+        closing_bracket = host.find(']')
+        if closing_bracket != -1:
+            remainder = host[closing_bracket + 1:].strip()
+            if remainder:
+                if not remainder.startswith(':'):
+                    return ''
+                if not remainder[1:].isdigit():
+                    return ''
+            return host[1:closing_bracket].strip()
+
+    parsed = urlsplit(f'//{host}')
+    if parsed.hostname:
+        return parsed.hostname.strip()
+
     if host.count(':') == 1:
-        return host.split(':', 1)[0].strip()
+        maybe_host, maybe_port = host.rsplit(':', 1)
+        if maybe_port.isdigit():
+            return maybe_host.strip()
+
     return host
 
 
 def _build_allowed_hosts():
     base_hosts = ['localhost', '127.0.0.1']
-    configured_hosts = [_normalize_host(h) for h in os.environ.get('ALLOWED_HOSTS', '').split(',')]
+    configured_hosts = [
+        _normalize_host(h)
+        for h in os.environ.get('ALLOWED_HOSTS', '').split(',')
+        if h.strip()
+    ]
     railway_host = _normalize_host(os.environ.get('RAILWAY_PUBLIC_DOMAIN', ''))
     if railway_host:
         configured_hosts.append(railway_host)
