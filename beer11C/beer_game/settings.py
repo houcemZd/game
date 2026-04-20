@@ -1,6 +1,7 @@
 import os
 import socket as _socket
 from pathlib import Path
+from urllib.parse import urlsplit
 import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -19,8 +20,36 @@ SECRET_KEY = os.environ.get(
 
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-_extra_hosts = [h.strip() for h in os.environ.get('ALLOWED_HOSTS', '').split(',') if h.strip()]
-ALLOWED_HOSTS = ['localhost', '127.0.0.1'] + _extra_hosts
+def _normalize_host(value):
+    host = value.strip()
+    if not host:
+        return ''
+    if '://' in host:
+        return (urlsplit(host).hostname or '').strip()
+    if host.startswith('[') and host.endswith(']'):
+        return host
+    if host.count(':') == 1:
+        return host.split(':', 1)[0].strip()
+    return host
+
+
+def _build_allowed_hosts():
+    base_hosts = ['localhost', '127.0.0.1']
+    configured_hosts = [_normalize_host(h) for h in os.environ.get('ALLOWED_HOSTS', '').split(',')]
+    railway_host = _normalize_host(os.environ.get('RAILWAY_PUBLIC_DOMAIN', ''))
+    if railway_host:
+        configured_hosts.append(railway_host)
+
+    seen = set()
+    hosts = []
+    for host in base_hosts + configured_hosts:
+        if host and host not in seen:
+            seen.add(host)
+            hosts.append(host)
+    return hosts
+
+
+ALLOWED_HOSTS = _build_allowed_hosts()
 
 # CSRF trusted origins — set via env for cross-device access
 _extra_origins = [o.strip() for o in os.environ.get('CSRF_TRUSTED_ORIGINS', '').split(',') if o.strip()]
