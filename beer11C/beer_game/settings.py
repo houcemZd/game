@@ -22,7 +22,10 @@ DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 def _normalize_host(value):
     host = value.strip()
-    if len(host) >= 2 and host[0] == host[-1] and host[0] in {"'", '"'}:
+    if len(host) >= 2 and (
+        (host.startswith('"') and host.endswith('"'))
+        or (host.startswith("'") and host.endswith("'"))
+    ):
         host = host[1:-1].strip()
     if not host:
         return ''
