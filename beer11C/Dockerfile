@@ -6,10 +6,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY beer11C/requirements.txt ./requirements.txt
+COPY requirements.txt ./requirements.txt
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
-COPY beer11C/ /app/
+COPY . /app/
 
 # Ensure production staticfiles backend is used during collectstatic.
 ENV DEBUG=False
