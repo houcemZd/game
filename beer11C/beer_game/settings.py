@@ -118,7 +118,7 @@ ASGI_APPLICATION = 'beer_game.asgi.application'
 _database_url = os.environ.get('DATABASE_URL', '').strip()
 _redis_url = os.environ.get('REDIS_URL', '').strip()
 
-def _validate_production_services(debug, database_url, redis_url):
+def validate_production_services(debug, database_url, redis_url):
     if debug:
         return
     if not database_url:
@@ -131,7 +131,7 @@ def _validate_production_services(debug, database_url, redis_url):
         )
 
 
-_validate_production_services(DEBUG, _database_url, _redis_url)
+validate_production_services(DEBUG, _database_url, _redis_url)
 
 def _redis_available():
     try:
@@ -148,23 +148,19 @@ if _redis_url:
             "CONFIG": {"hosts": [_redis_url]},
         }
     }
-elif DEBUG and _redis_available():
+elif _redis_available():
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
             "CONFIG": {"hosts": [("127.0.0.1", 6379)]},
         }
     }
-elif DEBUG:
+else:
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels.layers.InMemoryChannelLayer",
         }
     }
-else:
-    raise ImproperlyConfigured(
-        'REDIS_URL is required when DEBUG=False (production).'
-    )
 
 TEMPLATES = [
     {
@@ -184,7 +180,11 @@ TEMPLATES = [
 
 DATABASES = {
     'default': dj_database_url.config(
-        default=_database_url or ('sqlite:///' + str(BASE_DIR / 'db.sqlite3')),
+        default=(
+            'sqlite:///' + str(BASE_DIR / 'db.sqlite3')
+            if DEBUG
+            else (_database_url or None)
+        ),
         conn_max_age=600,
     )
 }

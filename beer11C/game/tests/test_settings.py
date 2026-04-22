@@ -94,7 +94,7 @@ class ProductionConfigSettingsTest(SimpleTestCase):
             ImproperlyConfigured,
             'DATABASE_URL is required when DEBUG=False (production).',
         ):
-            project_settings._validate_production_services(
+            project_settings.validate_production_services(
                 debug=False,
                 database_url='',
                 redis_url='redis://localhost:6379/0',
@@ -105,14 +105,14 @@ class ProductionConfigSettingsTest(SimpleTestCase):
             ImproperlyConfigured,
             'REDIS_URL is required when DEBUG=False (production).',
         ):
-            project_settings._validate_production_services(
+            project_settings.validate_production_services(
                 debug=False,
                 database_url='postgres://user:pass@localhost:5432/db',
                 redis_url='',
             )
 
     def test_allows_missing_urls_in_debug(self):
-        project_settings._validate_production_services(
+        project_settings.validate_production_services(
             debug=True,
             database_url='',
             redis_url='',
