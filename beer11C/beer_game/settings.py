@@ -2,7 +2,9 @@ import os
 import socket as _socket
 from pathlib import Path
 from urllib.parse import urlsplit
+
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -113,7 +115,23 @@ ROOT_URLCONF = 'beer_game.urls'
 ASGI_APPLICATION = 'beer_game.asgi.application'
 
 # ── Channel layer: prefer REDIS_URL env var, then local Redis, else in-memory ─
-_redis_url = os.environ.get('REDIS_URL', '')
+_database_url = os.environ.get('DATABASE_URL', '').strip()
+_redis_url = os.environ.get('REDIS_URL', '').strip()
+
+def _validate_production_services(debug, database_url, redis_url):
+    if debug:
+        return
+    if not database_url:
+        raise ImproperlyConfigured(
+            'DATABASE_URL is required when DEBUG=False (production).'
+        )
+    if not redis_url:
+        raise ImproperlyConfigured(
+            'REDIS_URL is required when DEBUG=False (production).'
+        )
+
+
+_validate_production_services(DEBUG, _database_url, _redis_url)
 
 def _redis_available():
     try:
@@ -130,19 +148,23 @@ if _redis_url:
             "CONFIG": {"hosts": [_redis_url]},
         }
     }
-elif _redis_available():
+elif DEBUG and _redis_available():
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
             "CONFIG": {"hosts": [("127.0.0.1", 6379)]},
         }
     }
-else:
+elif DEBUG:
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels.layers.InMemoryChannelLayer",
         }
     }
+else:
+    raise ImproperlyConfigured(
+        'REDIS_URL is required when DEBUG=False (production).'
+    )
 
 TEMPLATES = [
     {
@@ -162,7 +184,7 @@ TEMPLATES = [
 
 DATABASES = {
     'default': dj_database_url.config(
-        default='sqlite:///' + str(BASE_DIR / 'db.sqlite3'),
+        default=_database_url or ('sqlite:///' + str(BASE_DIR / 'db.sqlite3')),
         conn_max_age=600,
     )
 }

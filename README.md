@@ -24,11 +24,15 @@ This repository includes a root `railway.toml` for Railway deployments.
 It installs dependencies, runs `collectstatic`, applies migrations, and starts
 Daphne using the ASGI app.
 
+If Railway deploys from `beer11C/` using the Dockerfile, startup still runs
+`python manage.py migrate` before Daphne via `entrypoint.sh`.
+
 **Steps:**
 
 1. Create a new project at [Railway](https://railway.app/) and connect this repository
 2. Add a **PostgreSQL** service and set `DATABASE_URL` from Railway's provided variable
 3. Add a **Redis** service and set `REDIS_URL` from Railway's provided variable
+   - In production (`DEBUG=False`), the app now requires both env vars at boot.
 4. Set:
    - `SECRET_KEY` (strong random value)
    - `DEBUG=False`
