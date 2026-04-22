@@ -10,6 +10,7 @@ COPY requirements.txt ./requirements.txt
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY . /app/
+RUN chmod +x /app/entrypoint.sh
 
 # Ensure production staticfiles backend is used during collectstatic.
 ENV DEBUG=False
@@ -17,4 +18,4 @@ RUN python manage.py collectstatic --no-input
 
 EXPOSE 8000
 
-CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "beer_game.asgi:application"]
+CMD ["/app/entrypoint.sh"]

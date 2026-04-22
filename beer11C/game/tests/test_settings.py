@@ -1,6 +1,7 @@
 import os
 from unittest.mock import patch
 
+from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase
 
 from beer_game import settings as project_settings
@@ -84,4 +85,35 @@ class AllowedHostsSettingsTest(SimpleTestCase):
                 'api.example.com',
                 'game-production-a2bc.up.railway.app',
             ],
+        )
+
+
+class ProductionConfigSettingsTest(SimpleTestCase):
+    def test_requires_database_url_in_production(self):
+        with self.assertRaisesMessage(
+            ImproperlyConfigured,
+            'DATABASE_URL is required when DEBUG=False (production).',
+        ):
+            project_settings.validate_production_services(
+                debug=False,
+                database_url='',
+                redis_url='redis://localhost:6379/0',
+            )
+
+    def test_requires_redis_url_in_production(self):
+        with self.assertRaisesMessage(
+            ImproperlyConfigured,
+            'REDIS_URL is required when DEBUG=False (production).',
+        ):
+            project_settings.validate_production_services(
+                debug=False,
+                database_url='postgres://user:pass@localhost:5432/db',
+                redis_url='',
+            )
+
+    def test_allows_missing_urls_in_debug(self):
+        project_settings.validate_production_services(
+            debug=True,
+            database_url='',
+            redis_url='',
         )
