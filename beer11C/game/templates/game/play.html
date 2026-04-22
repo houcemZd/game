@@ -101,8 +101,16 @@
 
 /* ═══════════════ ROAD BOARD ═══════════════════════════════════════════════ */
 
-/* Scroll wrapper */
-.road-board-wrap { overflow-x:auto; padding:.5rem 0 .8rem; }
+/* Scroll wrapper — grassy field background */
+.road-board-wrap {
+  overflow-x:auto; padding:.5rem 0 .8rem;
+  background:
+    /* subtle grass blades texture */
+    repeating-linear-gradient(172deg, transparent 0px, transparent 4px, rgba(34,197,94,.04) 4px, rgba(34,197,94,.04) 5px),
+    repeating-linear-gradient(8deg,  transparent 0px, transparent 5px, rgba(34,197,94,.03) 5px, rgba(34,197,94,.03) 6px),
+    linear-gradient(180deg, #07180a 0%, #0a1e0d 50%, #07180a 100%);
+  border-radius:8px;
+}
 
 /* Flex row containing alternating nodes + road segments */
 .road-board {
@@ -142,10 +150,10 @@
   border:1px solid rgba(33,150,243,.3); font-weight:900;
 }
 
-/* Warehouse body */
+/* Warehouse body — subtle grass-ground tint */
 .road-node-body {
   display:flex; flex-direction:column; align-items:center;
-  flex:1; background:var(--surface); padding:.5rem .35rem .4rem; gap:5px;
+  flex:1; background:rgba(6,16,8,.85); padding:.5rem .35rem .4rem; gap:5px;
   min-height:90px;
 }
 
@@ -251,43 +259,43 @@
   padding:5px 10px 0; min-height:36px; gap:4px;
 }
 
-/* Road surface */
+/* Road surface — dirt path through the grass field */
 .road-surface {
   flex:1; min-height:58px;
   background:
     linear-gradient(180deg,
-      #181c28 0%, #1a1f2c 8%,
-      #151924 35%, #151924 65%,
-      #1a1f2c 92%, #181c28 100%);
-  border-top:3px solid #2a3148; border-bottom:3px solid #2a3148;
+      #16100a 0%, #1a1409 8%,
+      #15100a 35%, #15100a 65%,
+      #1a1409 92%, #16100a 100%);
+  border-top:3px solid #3a2810; border-bottom:3px solid #3a2810;
   position:relative; overflow:hidden;
   display:flex; align-items:center; justify-content:space-around;
   padding:0 14px;
 }
-/* Asphalt noise texture overlay */
+/* Dirt / soil texture overlay */
 .road-surface::before {
   content:''; position:absolute; inset:0; pointer-events:none;
   background:
-    /* Top white edge line */
+    /* Faint grass edge strips at top and bottom */
     linear-gradient(180deg,
-      rgba(255,255,255,.08) 0%, rgba(255,255,255,.08) 2px,
-      transparent 2px, transparent calc(100% - 2px),
-      rgba(255,255,255,.08) calc(100% - 2px), rgba(255,255,255,.08) 100%),
-    /* Subtle gravel texture */
+      rgba(34,197,94,.12) 0%, rgba(34,197,94,.04) 5px,
+      transparent 5px, transparent calc(100% - 5px),
+      rgba(34,197,94,.04) calc(100% - 5px), rgba(34,197,94,.12) 100%),
+    /* Subtle soil grain */
     repeating-linear-gradient(90deg,
-      rgba(255,255,255,.008) 0px, transparent 2px, transparent 6px),
+      rgba(140,90,40,.012) 0px, transparent 3px, transparent 7px),
     repeating-linear-gradient(0deg,
-      rgba(255,255,255,.005) 0px, transparent 3px, transparent 8px);
+      rgba(100,65,25,.01) 0px, transparent 4px, transparent 10px);
 }
-/* Animated centre dashes — yellow road markings */
+/* Animated centre path marking — earthy track line */
 .road-surface::after {
   content:''; position:absolute; top:50%; left:-200%;
-  width:400%; height:3px;
+  width:400%; height:2px;
   background:repeating-linear-gradient(90deg,
-    transparent 0, transparent 8px,
-    rgba(245,200,66,.45) 8px, rgba(245,200,66,.45) 20px);
+    transparent 0, transparent 10px,
+    rgba(180,130,60,.35) 10px, rgba(180,130,60,.35) 20px);
   animation:road-flow .75s linear infinite; pointer-events:none;
-  filter:drop-shadow(0 0 3px rgba(245,200,66,.2));
+  filter:drop-shadow(0 0 2px rgba(180,130,60,.15));
 }
 @keyframes road-flow {
   from { transform:translateY(-50%) translateX(0); }
@@ -610,8 +618,9 @@
 /* ── Board card neon border + scanner line ───────────────────────────── */
 #bgb-board-card {
   position:relative; overflow:visible;
-  border-color:rgba(245,200,66,.22) !important;
-  box-shadow:0 0 0 1px rgba(245,200,66,.08), 0 0 40px rgba(245,200,66,.07) !important;
+  border-color:rgba(34,197,94,.25) !important;
+  box-shadow:0 0 0 1px rgba(34,197,94,.1), 0 0 40px rgba(34,197,94,.08) !important;
+  background:rgba(6,18,6,.55) !important;
 }
 .board-scanner-clip {
   position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:20; border-radius:inherit;
@@ -619,7 +628,7 @@
 .board-scanner {
   position: absolute; left: 0; right: 0; height: 3px; top: 0;
   pointer-events: none;
-  background: linear-gradient(90deg, transparent 5%, rgba(245,200,66,.55) 45%, rgba(245,200,66,.55) 55%, transparent 95%);
+  background: linear-gradient(90deg, transparent 5%, rgba(34,197,94,.55) 45%, rgba(34,197,94,.55) 55%, transparent 95%);
   animation: scanner-run 6s ease-in-out infinite;
   filter: blur(1px);
 }
@@ -810,9 +819,9 @@ body.crit-alert::after {
   100% { transform:translateX(-8px) scale(1.4); opacity:0; }
 }
 
-/* ── Enhanced road glow ─────────────────────────────────────────────────── */
+/* ── Enhanced road glow — earthy depth ──────────────────────────────────── */
 .road-surface {
-  box-shadow:inset 0 0 24px rgba(0,0,0,.35), 0 0 12px rgba(0,0,0,.4);
+  box-shadow:inset 0 0 24px rgba(0,0,0,.4), 0 0 8px rgba(0,0,0,.3);
 }
 
 /* ── Board node hover lift ──────────────────────────────────────────────── */
@@ -845,8 +854,8 @@ body.crit-alert::after {
 
 /* ── Neon board card pulse ──────────────────────────────────────────────── */
 @keyframes board-neon-pulse {
-  0%,100%{ box-shadow:0 0 0 1px rgba(245,200,66,.08), 0 0 30px rgba(245,200,66,.05); }
-  50%    { box-shadow:0 0 0 1px rgba(245,200,66,.18), 0 0 55px rgba(245,200,66,.1); }
+  0%,100%{ box-shadow:0 0 0 1px rgba(34,197,94,.1),  0 0 30px rgba(34,197,94,.06); }
+  50%    { box-shadow:0 0 0 1px rgba(34,197,94,.22),  0 0 55px rgba(34,197,94,.12); }
 }
 #bgb-board-card { animation:board-neon-pulse 5s ease infinite; }
 
@@ -1768,7 +1777,7 @@ body.crit-alert::after {
 <div class="card" id="bgb-board-card" style="padding:1rem 1.1rem;">
   <div class="board-scanner-clip"><div class="board-scanner"></div></div>
   <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:.7rem;">
-    <div class="card-title" style="margin:0;display:inline-flex;align-items:center;gap:.35rem;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;"><path d="M4 4v16" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.5"/><path d="M20 4v16" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.5"/><path d="M12 4v3M12 10v3M12 16v4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="3 3" opacity="0.7"/></svg> Supply Chain Highway</div>
+    <div class="card-title" style="margin:0;display:inline-flex;align-items:center;gap:.35rem;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;"><path d="M4 4v16" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.5"/><path d="M20 4v16" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.5"/><path d="M12 4v3M12 10v3M12 16v4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="3 3" opacity="0.7"/></svg> Supply Chain Field <span style="font-size:.58rem;color:#4ade80;font-weight:700;letter-spacing:.04em;margin-left:.2rem;">🌿</span></div>
     <div style="font-size:.6rem; color:var(--muted); font-family:var(--font-mono); display:flex; align-items:center; gap:.6rem;">
       <span style="display:inline-flex;align-items:center;gap:.2rem;"><svg width="12" height="10" viewBox="0 0 24 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="0" y="4" width="14" height="10" rx="2" fill="#3b82f6" opacity="0.85"/><rect x="14" y="6" width="8" height="8" rx="1.5" fill="#2563eb" opacity="0.9"/><circle cx="5" cy="15.5" r="2" fill="#64748b"/><circle cx="19" cy="15.5" r="2" fill="#64748b"/></svg> shipments</span>
       <span style="display:inline-flex;align-items:center;gap:.2rem;"><svg width="10" height="12" viewBox="0 0 14 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 0h7l5 5v11a2 2 0 01-2 2H2a2 2 0 01-2-2V2a2 2 0 012-2z" fill="#f5c842" opacity="0.85"/><path d="M9 0l5 5h-3a2 2 0 01-2-2V0z" fill="#fde68a" opacity="0.6"/></svg> orders</span>
@@ -3470,7 +3479,7 @@ function achieveToast(msg) {
   if (!container) return;
   // Respect reduced motion preference
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const COLORS = ['rgba(245,200,66,.12)','rgba(59,130,246,.08)','rgba(168,85,247,.08)','rgba(34,197,94,.06)','rgba(255,255,255,.05)'];
+  const COLORS = ['rgba(34,197,94,.15)','rgba(34,197,94,.1)','rgba(74,222,128,.08)','rgba(59,130,246,.06)','rgba(168,85,247,.06)','rgba(255,255,255,.04)'];
   const COUNT = navigator.hardwareConcurrency > 4 ? 6 : 4;
   for (let i = 0; i < COUNT; i++) {
     const p = document.createElement('div');
